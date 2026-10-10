@@ -632,6 +632,7 @@ async function launch() {
     await initSchema();
     await migrateGroupTables().catch(() => {});
     await require('./database/group_pro_db').migrate().catch(() => {});
+    await require('./database/ingest_db').migrate().catch((e) => logger.error('[IngestDB] migration failed — feature stays inactive:', e.message));
     require('./utils/cache').clearAllSubCache();
     await require('./handlers/group_panel').migrateGroupPanel().catch(() => {});
     await require('./database/db').initBankTables().catch(() => {});

@@ -48,6 +48,9 @@ const ALL_TABLES = [
   'nations','nation_alliances','nation_army','nation_citizens','nation_companies',
   'nation_elections','nation_events','nation_ministers','nation_projects',
   'nation_seasons','nation_tech','nation_wars','world_lands',
+  // ── استيراد الملفات (UserBot) — الآباء قبل الأبناء: الاستعادة تنفّذ TRUNCATE ... CASCADE ──
+  // (يحرس الترتيب test/ingest_schema.test.js؛ المصدر: INGEST_TABLES في database/ingest_db.js)
+  'ingest_sources','ingest_batches','ingest_rules','ingest_watermarks','ingest_items','ingest_events',
   // ── متفرقات ──
   'afk_users','ai_history','logs','settings','cache_store','global_help_file',
 ];
