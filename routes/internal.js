@@ -62,4 +62,4 @@ function getUserbotStatus() {
   };
 }
 
-module.exports = { router, getUserbotStatus };
+module.exports = { router, getUserbotStatus, requireInternalSecret };

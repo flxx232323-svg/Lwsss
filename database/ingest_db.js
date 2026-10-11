@@ -8,7 +8,8 @@
  *  لا شيء يتغيّر في سلوك البوت الحالي.
  *
  *  قواعد التصميم (كل واحدة لها سبب):
- *  1) إضافي فقط: CREATE TABLE/INDEX IF NOT EXISTS، ولا يمسّ أي جدول موجود (files وغيره).
+ *  1) إضافي فقط: CREATE TABLE/INDEX IF NOT EXISTS (+ ADD COLUMN IF NOT EXISTS لجداول ingest_* فقط)،
+ *     ولا يمسّ أي جدول موجود (files وغيره).
  *  2) لا مفاتيح أجنبية نحو جداول المكتبة (files/categories/...) عمداً:
  *     الاستعادة في utils/backup_full.js تنفّذ TRUNCATE ... CASCADE على جداول المكتبة،
  *     وأي FK نحوها كان سيمسح بيانات الاستيراد معها. المراجع نحو المكتبة "ناعمة" (أرقام فقط).
@@ -123,6 +124,8 @@ function buildStatements() {
        tg_doc_id              BIGINT,
        file_unique_id         TEXT,
        sha256                 TEXT,
+       message_date           TIMESTAMPTZ,
+       caption                TEXT,
        rule_id                INTEGER,
        suggested_category_id  INTEGER,
        duplicate_of_file_id   INTEGER,
@@ -154,6 +157,9 @@ function buildStatements() {
          (save_state = 'none' AND publish_state = 'none') OR approved_by IS NOT NULL
        )
      )`,
+    // المرحلة 2: تاريخ الرسالة والتعليق (للمراجعة والتصنيف لاحقاً؛ الرسائل قد تُحذف) — للجداول المُنشأة في المرحلة 1
+    `ALTER TABLE ingest_items ADD COLUMN IF NOT EXISTS message_date TIMESTAMPTZ`,
+    `ALTER TABLE ingest_items ADD COLUMN IF NOT EXISTS caption TEXT`,
     `CREATE INDEX IF NOT EXISTS idx_ingest_items_state  ON ingest_items(state)`,
     `CREATE INDEX IF NOT EXISTS idx_ingest_items_batch  ON ingest_items(batch_id) WHERE batch_id IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_ingest_items_sha256 ON ingest_items(sha256) WHERE sha256 IS NOT NULL`,

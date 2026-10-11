@@ -466,6 +466,9 @@ bot.command('userbot_status', async ctx => {
   ).catch(() => {});
 });
 
+// 📥 حالة استيراد الملفات — Owner فقط (قراءة فقط)
+require('./handlers/ingest_status').register(bot);
+
 // 🐺 لوب غارو trigger
 bot.hears(/^(لوب غارو|لوب_غارو|ذئب|werewolf)$/i, async (ctx) => {
   if (!['group','supergroup'].includes(ctx.chat?.type)) return;
@@ -709,6 +712,7 @@ async function launch() {
     // ── Internal service-to-service routes (UserBot heartbeat, etc.) ──
     const internalRoutes = require('./routes/internal');
     app.use('/internal', internalRoutes.router);
+    app.use('/internal/ingest', internalRoutes.requireInternalSecret, require('./routes/ingest_internal').router);
 
     // ── Global Express Error Handler ──
     app.use((err, req, res, _next) => {

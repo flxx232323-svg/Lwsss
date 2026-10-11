@@ -3,7 +3,7 @@
  * 🧪 test/ingest_schema.test.js — حرّاس مخطط استيراد الملفات (المرحلة 1)
  *
  * بلا قاعدة بيانات: يفحص نص الـ DDL والملفات المرتبطة به. يحرس أربعة أشياء:
- *  1) الهجرة إضافية فقط (لا DROP/ALTER/TRUNCATE/DELETE/UPDATE/INSERT).
+ *  1) الهجرة إضافية فقط (لا DROP/TRUNCATE/DELETE/UPDATE/INSERT، وALTER فقط بصيغة ADD COLUMN IF NOT EXISTS لجداول ingest_*).
  *  2) لا مفتاح أجنبي نحو جداول المكتبة (الاستعادة تنفّذ TRUNCATE ... CASCADE عليها).
  *  3) الجداول مرتبة آباء قبل أبناء، وبنفس الترتيب داخل ALL_TABLES في backup_full.js.
  *  4) الهجرة مستدعاة عند الإقلاع بعد initSchema ولا تُبتلع أخطاؤها بصمت.
@@ -21,8 +21,12 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const statements = ingest.buildStatements();
 
+// الاستثناء الوحيد المسموح من "إضافي فقط": إضافة عمود لجدول ingest_* (بلا حذف ولا تعديل نوع)
+const ADD_COLUMN = /^\s*ALTER TABLE ingest_\w+ ADD COLUMN IF NOT EXISTS \w+ [A-Z]+\s*$/i;
+
 test('الهجرة إضافية فقط ومتكررة التنفيذ', () => {
   for (const sql of statements) {
+    if (ADD_COLUMN.test(sql)) continue;
     assert.doesNotMatch(sql, /\b(DROP|ALTER|TRUNCATE|DELETE|UPDATE|INSERT)\b/i, 'عبارة غير إضافية: ' + sql.slice(0, 60));
     if (/^\s*CREATE\s/i.test(sql)) {
       assert.match(sql, /IF NOT EXISTS/i, 'CREATE بلا IF NOT EXISTS: ' + sql.slice(0, 60));
