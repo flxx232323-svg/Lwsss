@@ -1,13 +1,14 @@
 """
-نقطة الدخول لـ UserBot — المرحلة الأولى فقط.
-لا مراقبة مجموعات، لا auto-join، لا auto-admin، لا permissions management،
-لا scraping، لا broadcasting. فقط: تسجيل دخول + heartbeat دوري.
+نقطة الدخول لـ UserBot: تسجيل دخول + heartbeat دوري.
+مراقبة الملفات (ingest_watcher) اختيارية ومعطّلة افتراضياً (INGEST_ENABLED=1)، وللقراءة والتسجيل فقط:
+لا إرسال رسائل، لا auto-join، لا auto-admin، لا permissions management، لا broadcasting.
 """
 import asyncio
 
 from config import validate, HEARTBEAT_INTERVAL_SECONDS
 from telegram_client import build_client, ensure_logged_in
 from api_client import send_heartbeat, close_session
+from ingest_watcher import ENABLED as INGEST_ENABLED, ingest_loop
 
 
 async def heartbeat_loop(username):
@@ -31,10 +32,18 @@ async def main():
     print("[USERBOT] Ready")
 
     hb_task = asyncio.create_task(heartbeat_loop(username))
+    ingest_task = None
+    if INGEST_ENABLED:
+        ingest_task = asyncio.create_task(ingest_loop(client))
+    else:
+        print("[USERBOT] ingest watcher disabled (set INGEST_ENABLED=1 to enable)")
     try:
         await client.run_until_disconnected()
     finally:
         hb_task.cancel()
+        if ingest_task is not None:
+            ingest_task.cancel()
+            await asyncio.gather(ingest_task, return_exceptions=True)
         await close_session()
 
 
