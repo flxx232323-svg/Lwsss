@@ -94,6 +94,7 @@ async function showGroupPanel(ctx) {
     kbBtn('🎓 رسالة لتخصص', 'gp_broadcast_sp'),
   ]);
   rows.push([kbBtn('📨 أضفني لقروب (رابط دعوة)', 'gp_invite_me_list')]);
+  if (String(ctx.from?.id) === String(process.env.OWNER_ID)) rows.push([kbBtn('📥 مراقبة الملفات (UserBot)', 'ing_list')]);
   rows.push([kbBtn('⚙️ الإعدادات الافتراضية للقروبات الجديدة', 'gp_defaults')]);
   rows.push([kbBtn('◀️ رجوع', 'mg_menu')]);
 
