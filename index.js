@@ -469,6 +469,7 @@ bot.command('userbot_status', async ctx => {
 // 📥 حالة استيراد الملفات — Owner فقط (قراءة فقط)
 require('./handlers/ingest_status').register(bot);
 require('./handlers/ingest_panel').register(bot); // 📥 أزرار اختيار القروبات — Owner فقط
+require('./handlers/ingest_review').register(bot); // 📋 مركز مراجعة الملفات — Owner فقط
 
 // 🐺 لوب غارو trigger
 bot.hears(/^(لوب غارو|لوب_غارو|ذئب|werewolf)$/i, async (ctx) => {
