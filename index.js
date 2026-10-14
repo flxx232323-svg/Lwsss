@@ -470,6 +470,7 @@ bot.command('userbot_status', async ctx => {
 require('./handlers/ingest_status').register(bot);
 require('./handlers/ingest_panel').register(bot); // 📥 أزرار اختيار القروبات — Owner فقط
 require('./handlers/ingest_review').register(bot); // 📋 مركز مراجعة الملفات — Owner فقط
+require('./utils/ingest_senders').useTelegram(bot.telegram); // 👮 مشرفو القروبات لتتبع الملفات
 require('./handlers/ingest_probe').register(bot); // 🧪 فحص تحويل file_id — Owner فقط
 
 // 🐺 لوب غارو trigger

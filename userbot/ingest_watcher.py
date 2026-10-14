@@ -188,6 +188,13 @@ async def sweep_source(client, api, src, owner_id, cache, wanted_ids, now=None):
     sid = src["id"]
     chat_id = int(src["chat_id"])
     wm = int(src["last_message_id"])
+    # المرسلون المسموحون: المالك دائماً + ما يرسله الخادم في allowed_senders (مشرفو القروب إن فُعِّل التتبع)
+    senders = {owner_id}
+    for x in src.get("allowed_senders") or []:
+        try:
+            senders.add(int(x))
+        except (TypeError, ValueError):
+            pass
     allowed = None
     if not src.get("all_topics"):
         allowed = {None if t is None else int(t) for t in src.get("topics", [])}
@@ -213,7 +220,7 @@ async def sweep_source(client, api, src, owner_id, cache, wanted_ids, now=None):
         # الترتيب تصاعدي: كل ما دون last_id تم فحصه، سواء سُجِّل أم تُجوهل
         if getattr(msg, "date", None) and msg.date < cutoff:
             continue
-        if msg.sender_id is None or int(msg.sender_id) != owner_id:
+        if msg.sender_id is None or int(msg.sender_id) not in senders:
             continue
         if not is_file(msg):
             continue

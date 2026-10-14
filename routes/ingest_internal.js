@@ -12,7 +12,7 @@
  *  POST /batch   → { source_id, items?, watermark?, error? }
  *
  *  ضمانات (يفرضها الخادم ولا يثق بالعميل):
- *   - الملفات التي مُرسِلها OWNER_ID فقط، وفي نطاق المواضيع المفعّلة فقط.
+ *   - الملفات التي مُرسِلها OWNER_ID فقط (أو مشرفو القروب إن فُعِّل INGEST_TRACK_ADMINS=1)، وفي نطاق المواضيع المفعّلة فقط.
  *   - إدراج مكرّر (نفس المصدر + نفس الرسالة) يُتجاهل: التسجيل idempotent.
  *   - نقطة التقدّم لا تتراجع أبداً (GREATEST)، ولا تتجاوز أكبر رسالة في الدفعة نفسها،
  *     وتُكتب مع العناصر في معاملة واحدة: لا يتقدّم المؤشر دون أن تُسجَّل عناصره.
@@ -20,6 +20,7 @@
  */
 const express = require('express');
 const logger = require('../utils/logger');
+const senders = require('../utils/ingest_senders');
 
 const MAX_ITEMS = 200;
 const DIGITS = /^\d{1,19}$/;
@@ -37,6 +38,13 @@ function toIso(v) {
 function createRouter(deps = {}) {
   const getPg = deps.getPg || (() => require('../database/db').getPg());
   const getOwnerId = deps.getOwnerId || (() => String(process.env.OWNER_ID || ''));
+  const trackAdmins = deps.trackAdmins || senders.trackAdminsEnabled;
+  const getAdmins = deps.getAdmins || senders.defaultResolver;
+  // المرسلون المسموحون لقروب: المالك دائماً، ومشرفوه إن فُعِّل التتبع (فشل جلب المشرفين = المالك فقط)
+  const allowedFor = async (chatId, owner) => {
+    const on = !!trackAdmins();
+    return senders.allowedSenders({ owner, trackAdmins: on, admins: on ? await getAdmins(chatId) : null });
+  };
   const router = express.Router();
 
   // ── الإعداد: ماذا يراقب UserBot ──
@@ -68,6 +76,9 @@ function createRouter(deps = {}) {
         last_message_id: r.last_message_id,
         topics: rules.filter((x) => x.source_id === r.id).map((x) => x.topic_id), // null = القروب نفسه
       }));
+      if (trackAdmins()) {
+        for (const x of sources) x.allowed_senders = [...(await allowedFor(x.chat_id, owner))];
+      }
       res.json({ owner_id: owner, sources });
     } catch (e) {
       logger.error('[IngestAPI] config: ' + e.message);
@@ -110,7 +121,7 @@ function createRouter(deps = {}) {
 
     let client;
     try {
-      const sr = await pg.query(`SELECT id, enabled, mode, all_topics FROM ingest_sources WHERE id = $1`, [b.source_id]);
+      const sr = await pg.query(`SELECT id, enabled, mode, all_topics, chat_id::text AS chat_id FROM ingest_sources WHERE id = $1`, [b.source_id]);
       const src = sr.rows[0];
       if (!src) return res.status(404).json({ error: 'source_not_found' });
       if (src.enabled !== 1 || src.mode !== 'userbot') return res.status(409).json({ error: 'source_disabled' });
@@ -139,11 +150,12 @@ function createRouter(deps = {}) {
         inScope = (it) => allowed.has(it.topic_id === undefined || it.topic_id === null ? 'null' : idStr(it.topic_id));
       }
 
+      const allowedSenders = await allowedFor(src.chat_id, owner);
       let skippedSender = 0;
       let skippedScope = 0;
       const keep = [];
       for (const it of items) {
-        if (idStr(it.sender_id) !== owner) { skippedSender++; continue; }
+        if (!allowedSenders.has(idStr(it.sender_id))) { skippedSender++; continue; }
         if (!inScope(it)) { skippedScope++; continue; }
         keep.push(it);
       }
