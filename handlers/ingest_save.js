@@ -8,7 +8,7 @@
  *    4) النوع مدعوم والحجم يطابق الأصل؟  5) addFile (نفس دالة المكتبة)  6) قراءة الصف من files للتأكد
  *    7) حالة العنصر: completed / save_state=done / library_file_id.
  *
- *  الأوضاع (settings.ingest_stage، وغيابه أو أي قيمة غريبة = dry_run):
+ *  الأوضاع (settings.ingest_stage؛ غيابه = production تلقائي بعد الموافقة، وأي قيمة غريبة = dry_run للأمان):
  *    dry_run     لا forward ولا كتابة إطلاقاً. /ingest_save يعرض فقط ما سيحدث.
  *    staging     لا شيء تلقائي. يدوياً فقط:  /ingest_save one [رقم]   (ملف واحد)
  *    production  عامل خلفي: 5 ملفات كل 30 ثانية بفاصل 3 ثوانٍ (حدود تلغرام)، + الأمر اليدوي.
@@ -56,9 +56,17 @@ const ERR_AR = {
 };
 
 const sleepReal = (ms) => new Promise((r) => setTimeout(r, ms));
+
+let _saver = null;
+// يُستدعى بعد كل موافقة: يشغّل دورة حفظ فوراً (يحترم INGEST_SAVER_DISABLED). فشله لا يؤثر على الموافقة.
+function kick() {
+  if (!_saver || process.env.INGEST_SAVER_DISABLED === '1') return;
+  setImmediate(() => { _saver.tick().catch(() => {}); });
+}
 function log(level, msg) { try { require('../utils/logger')[level](msg); } catch (_) { /* لا شيء */ } }
 const clip = (s, n) => Array.from(String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, n).join('');
-const normStage = (v) => (STAGES.includes(v) ? v : 'dry_run');
+// غياب الإعداد = production (حفظ تلقائي بعد الموافقة). أي قيمة غريبة = dry_run للأمان.
+const normStage = (v) => (v === null || v === undefined || v === '' ? 'production' : (STAGES.includes(v) ? v : 'dry_run'));
 const codeOf = (lastError) => String(lastError || '').split(':')[0];
 const arLabel = (lastError) => ERR_AR[codeOf(lastError)] || clip(lastError, 60) || '—';
 
@@ -195,6 +203,7 @@ function createSaver(deps) {
   const d = Object.assign({
     now: Date.now,
     sleep: sleepReal,
+    after: (ms, fn) => { const t = setTimeout(fn, ms); if (t.unref) t.unref(); },
     newToken: () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`,
     storageChatId: null,
     pauseUntil: 0,
@@ -219,17 +228,24 @@ function createSaver(deps) {
     return out;
   }
 
+  let again = false;
+
   async function tick() {
-    if (running) return null;
+    if (running) { again = true; return null; } // طلب وصل أثناء العمل: يُعاد بعد الانتهاء
     running = true;
+    let out = null;
     try {
       if ((await getStage()) !== 'production' || !storageOk() || !d.getPg()) return null;
-      return await runBatch({ limit: TICK_BATCH, actor: { kind: 'system', id: null } });
+      out = await runBatch({ limit: TICK_BATCH, actor: { kind: 'system', id: null } });
+      return out;
     } catch (e) {
       log('error', '[ingest_save] tick: ' + (e && e.message));
       return null;
     } finally {
       running = false;
+      // دفعة ممتلئة = غالباً يوجد المزيد: نكمل بعد فاصل بدل انتظار الدورة الدورية
+      const full = !!out && out.done + out.retry + out.failed >= TICK_BATCH && d.pauseUntil <= d.now();
+      if (again || full) { again = false; d.after(full ? GAP_MS : 0, () => { tick().catch(() => {}); }); }
     }
   }
 
@@ -319,6 +335,7 @@ function register(bot, deps = {}) {
     storageChatId: process.env.INGEST_STORAGE_CHAT_ID,
   }, deps));
 
+  _saver = saver;
   if (process.env.INGEST_SAVER_DISABLED !== '1') {
     const t = setInterval(() => { saver.tick().catch(() => {}); }, TICK_MS);
     if (t.unref) t.unref();
@@ -357,4 +374,4 @@ function register(bot, deps = {}) {
   return saver;
 }
 
-module.exports = { register, createSaver, parseArgs, titleFor, normStage, STAGES, MAX_ATTEMPTS };
+module.exports = { register, kick, createSaver, parseArgs, titleFor, normStage, STAGES, MAX_ATTEMPTS };

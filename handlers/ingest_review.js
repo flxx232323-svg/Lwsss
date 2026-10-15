@@ -24,6 +24,9 @@
 const logger = require('../utils/logger');
 const { btn: kbBtn, build: kbBuild } = require('../utils/keyboard');
 
+// يحرّك عامل الحفظ فور الموافقة (بلا انتظار دورته الدورية). فشل التحريك لا يؤثر على الموافقة.
+function kickSaver() { try { require('./ingest_save').kick(); } catch (_) { /* لا شيء */ } }
+
 const PENDING = ['discovered', 'classified', 'needs_path', 'needs_review', 'in_batch', 'pending_approval'];
 const P = PENDING.map((s) => `'${s}'`).join(',');
 const PAGE = 8;
@@ -80,7 +83,7 @@ function buildQueueView({ counts, batches }) {
     '📋 مراجعة الملفات',
     '',
     `بانتظار المراجعة: ${counts.pending} · موافَق عليها: ${counts.approved} · مرفوضة: ${counts.rejected}`,
-    'الموافقة تُسجَّل الآن فقط؛ الحفظ في المكتبة خطوة لاحقة منفصلة.',
+    'الموافقة تحفظ الملف في المكتبة تلقائياً خلال ثوانٍ.',
   ];
   const rows = batches.map((b) => [kbBtn(
     `${b.no_path > 0 ? '⚠️' : '📂'} ${short(b.title, 18) || 'قروب'} · ${topicLabel(b.tp, b.topic_name)} · ${b.n}`,
@@ -400,6 +403,7 @@ async function handle(ctx, data, deps = {}) {
       await ack(pending ? '⚠️ حدّد مساراً صالحاً أولاً.' : 'تمت معالجته مسبقاً.', true);
     } else {
       await ack(cb.a === 'itemApprove' ? '✅ تمت الموافقة' : '❌ تم الرفض');
+      if (cb.a === 'itemApprove') kickSaver();
     }
     const back = await batchScreen(pg, String(v.item.source_id), v.item.tp, 0);
     return render(ctx, back || await queueView(pg));
@@ -407,6 +411,7 @@ async function handle(ctx, data, deps = {}) {
 
   if (cb.a === 'batchApprove') {
     const n = await approveBatch(pg, cb.sid, cb.tp, ownerId);
+    if (n) kickSaver();
     const b = await loadBatch(pg, cb.sid, cb.tp, 0);
     const left = b ? b.total : 0;
     await ack(n ? `✅ وُوفق على ${n} ملف${left ? ` · بقي ${left} بلا مسار` : ''}` : '⚠️ لا ملفات لها مسار صالح. حدّد المسار أولاً.', !n);
