@@ -9,6 +9,7 @@ from config import validate, HEARTBEAT_INTERVAL_SECONDS
 from telegram_client import build_client, ensure_logged_in
 from api_client import send_heartbeat, close_session
 from ingest_watcher import ENABLED as INGEST_ENABLED, ingest_loop
+from ingest_realtime import attach_realtime
 
 
 async def heartbeat_loop(username):
@@ -33,8 +34,10 @@ async def main():
 
     hb_task = asyncio.create_task(heartbeat_loop(username))
     ingest_task = None
+    realtime = None
     if INGEST_ENABLED:
         ingest_task = asyncio.create_task(ingest_loop(client))
+        realtime = attach_realtime(client)  # استماع فوري؛ المسح الدوري يبقى شبكة أمان
     else:
         print("[USERBOT] ingest watcher disabled (set INGEST_ENABLED=1 to enable)")
     try:
@@ -44,6 +47,8 @@ async def main():
         if ingest_task is not None:
             ingest_task.cancel()
             await asyncio.gather(ingest_task, return_exceptions=True)
+        if realtime is not None:
+            await realtime.stop()
         await close_session()
 
 
