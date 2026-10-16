@@ -488,12 +488,6 @@ async function muteAll(ctx, chatId) {
       {
         parse_mode: 'Markdown',
         reply_to_message_id: ctx.message?.reply_to_message?.message_id,
-        reply_markup: { inline_keyboard: [
-          [{ text: 'انذارات', callback_data: 'grp_warnmenu_' + targetUserId + '_' + chatId },
-           { text: 'كتم', callback_data: 'grp_mute_menu_' + targetUserId + '_' + chatId }],
-          [{ text: 'حظر',        callback_data: 'grp_ban_now_' + targetUserId },
-           { text: 'اذونات',     callback_data: 'grp_perms_' + targetUserId + '_' + chatId }],
-        ]}
       }
     ).catch(() => null);
 
@@ -548,12 +542,6 @@ async function unmuteAll(ctx, chatId) {
       {
         parse_mode: 'Markdown',
         reply_to_message_id: ctx.message?.reply_to_message?.message_id,
-        reply_markup: { inline_keyboard: [
-          [{ text: 'انذارات', callback_data: 'grp_warnmenu_' + targetUserId + '_' + chatId },
-           { text: 'كتم', callback_data: 'grp_mute_menu_' + targetUserId + '_' + chatId }],
-          [{ text: 'حظر',        callback_data: 'grp_ban_now_' + targetUserId },
-           { text: 'اذونات',     callback_data: 'grp_perms_' + targetUserId + '_' + chatId }],
-        ]}
       }
     ).catch(() => null);
 

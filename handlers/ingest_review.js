@@ -115,12 +115,13 @@ function buildBatchView({ sid, tp, title, topicName, pathText, items, page, tota
   return { text: lines.join('\n'), rows };
 }
 
-function buildItemView({ item, srcTitle, topicName, pathText, ownPath, dupCount }) {
+function buildItemView({ item, srcTitle, topicName, pathText, ownPath, dupCount, senderLabel }) {
   const lines = [
     `📄 ${itemLabel(item)}`,
     '',
     `القروب: ${short(srcTitle, 30) || '—'} · ${topicLabel(item.tp, topicName)}`,
   ];
+  if (senderLabel) lines.push(`المرسل: ${senderLabel}`);
   if (fmtSize(item.size)) lines.push(`الحجم: ${fmtSize(item.size)}${item.mime_type ? ' · ' + short(item.mime_type, 30) : ''}`);
   if (item.message_date) lines.push(`التاريخ: ${new Date(item.message_date).toISOString().slice(0, 16).replace('T', ' ')} UTC`);
   if (item.caption) lines.push(`التعليق: ${short(item.caption, 120)}`);
@@ -217,11 +218,18 @@ async function loadBatch(pg, sid, tp, page) {
   return { src, topicName, rulePath: await pathText(pg, rule && rule.category_id), items, total: stats.total, noPath: stats.no_path };
 }
 
+// المرسل للعرض: المالك = «أنت»، وغيره = مشرف (يُسجَّل غير المالك فقط عند تفعيل تتبع المشرفين)
+function senderLabelOf(senderId) {
+  if (!senderId) return null;
+  return String(senderId) === String(process.env.OWNER_ID || '') ? 'أنت' : `مشرف · ${senderId}`;
+}
+
 async function loadItem(pg, id) {
   const r = await pg.query(
     `SELECT i.id, i.source_id, COALESCE(i.topic_id, 0)::text AS tp, i.source_message_id::text AS source_message_id,
             i.file_name, i.caption, i.size_bytes::text AS size, i.mime_type, i.message_date, i.state,
-            i.suggested_category_id AS own_cat, r.category_id AS rule_cat, s.title AS src_title, s.chat_id
+            i.suggested_category_id AS own_cat, r.category_id AS rule_cat, s.title AS src_title, s.chat_id,
+            i.sender_id::text AS sender_id
        FROM ingest_items i ${RULE_JOIN} JOIN ingest_sources s ON s.id = i.source_id WHERE i.id = $1`, [id]);
   const it = r.rows[0];
   if (!it) return null;
@@ -231,7 +239,7 @@ async function loadItem(pg, id) {
     `SELECT count(*)::int AS n FROM ingest_items WHERE id <> $1 AND file_name = $2 AND size_bytes IS NOT DISTINCT FROM $3::bigint AND $2 <> ''`,
     [it.id, it.file_name, it.size])).rows[0].n;
   const eff = it.own_cat || it.rule_cat;
-  return { item: it, srcTitle: it.src_title, topicName, pathText: await pathText(pg, eff), ownPath: !!it.own_cat, dupCount: dup };
+  return { item: it, srcTitle: it.src_title, topicName, pathText: await pathText(pg, eff), ownPath: !!it.own_cat, dupCount: dup, senderLabel: senderLabelOf(it.sender_id) };
 }
 
 // مستويات المنتقي: [جدول الأبناء، عمود الأب، جدول الأب لحساب "المستوى السابق"]
