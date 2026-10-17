@@ -20,6 +20,13 @@
 const logger = require('../utils/logger');
 const { btn: kbBtn, build: kbBuild } = require('../utils/keyboard');
 
+const STATE_AR = {
+  discovered: 'مكتشف', classified: 'مصنَّف', needs_path: 'بلا مسار', needs_review: 'يحتاج مراجعة',
+  duplicate_flagged: 'مكرر محتمل', in_batch: 'في دفعة', pending_approval: 'بانتظار الموافقة',
+  approved: 'موافَق عليه', rejected: 'مرفوض', deferred_storage: 'مؤجَّل (التخزين)',
+  too_large: 'كبير جداً', completed: 'مكتمل',
+};
+
 const MAX_GROUPS = 40;
 const MAX_TOPICS = 24;
 const CHAT = '(-?\\d{1,20})';
@@ -82,8 +89,8 @@ function buildGroupView({ group, source, counts, err, topics, ruleTopics, now })
   lines.push(`النطاق: ${allTopics ? 'كل المواضيع' : `مواضيع محددة (${on.size})`}`);
   if (source && source.wm_at) lines.push(`آخر مسح ناجح: منذ ${ago(now - new Date(source.wm_at).getTime())}`);
   else if (enabled) lines.push('آخر مسح: لم يبدأ بعد (ينتظر UserBot)');
-  const c = counts && counts.length ? counts.map((r) => `${r.state}=${r.n}`).join('، ') : null;
-  if (c) lines.push(`العناصر: ${c}`);
+  const c = counts && counts.length ? counts.map((r) => (STATE_AR[r.state] || r.state) + ': ' + r.n).join('، ') : null;
+  if (c) lines.push(`الملفات: ${c}`);
   if (err) {
     const errAt = new Date(err.ts).getTime();
     const recovered = source && source.wm_at && new Date(source.wm_at).getTime() > errAt;

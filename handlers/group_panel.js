@@ -358,6 +358,7 @@ async function handleCallback(ctx, data) {
   if (data === 'gp_panel') { const uid = ctx.uid || ctx.from?.id; const isOwner = uid === parseInt(process.env.OWNER_ID); return isOwner ? showGroupPanel(ctx) : showMyGroups(ctx); }
   if (data === 'gp_defaults') return showDefaultSettings(ctx);
   if (data === 'gp_botuser') return showBotUserPanel(ctx);
+  if (data === 'gp_botuser_failed') return showBotUserFailed(ctx);
   if (data === 'gp_def_setmsg' || data === 'gp_def_setphoto' || data === 'gp_def_reset') return handleDefaultCallback(ctx, data);
 
   if (data === 'gp_broadcast_sp') return showBroadcastSpecPicker(ctx);
@@ -875,15 +876,105 @@ async function cleanDeadGroups(ctx) {
 // ══════════════════════════════════════════════════════════
 // 🤖 Bot User — يجمع مراقبة الملفات ومراجعة الملفات (Owner فقط)
 // ══════════════════════════════════════════════════════════
+const _U = (n, one, two, few) => (n === 1 ? one : n === 2 ? two : n <= 10 ? n + ' ' + few : n + ' ' + one);
+const _AGO = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return _U(s, 'ثانية', 'ثانيتين', 'ثوانٍ');
+  const m = Math.floor(s / 60);
+  if (m < 60) return _U(m, 'دقيقة', 'دقيقتين', 'دقائق');
+  const h = Math.floor(m / 60);
+  if (h < 24) return _U(h, 'ساعة', 'ساعتين', 'ساعات');
+  const d = Math.floor(h / 24);
+  return _U(d, 'يوم', 'يومين', 'أيام');
+};
+const _clipT = (t, n) => Array.from(String(t == null ? '' : t).replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, n).join('');
+
+async function _botUserStats() {
+  const q1 = (sql) => get(sql, []).catch(() => null);
+  const [src, items, saved, errs] = await Promise.all([
+    q1("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END), 0) AS en FROM ingest_sources"),
+    q1("SELECT " +
+       "COALESCE(SUM(CASE WHEN state IN ('discovered','classified','needs_path','needs_review','in_batch','pending_approval') THEN 1 ELSE 0 END), 0) AS pending, " +
+       "COALESCE(SUM(CASE WHEN state = 'approved' AND save_state IN ('none','pending') THEN 1 ELSE 0 END), 0) AS saving, " +
+       "COALESCE(SUM(CASE WHEN save_state = 'failed_retryable' THEN 1 ELSE 0 END), 0) AS retrying, " +
+       "COALESCE(SUM(CASE WHEN save_state = 'failed_permanent' THEN 1 ELSE 0 END), 0) AS failed " +
+       "FROM ingest_items"),
+    q1("SELECT COUNT(*) AS n FROM ingest_events WHERE event = 'item_saved' AND ts >= NOW() - INTERVAL '24 hours'"),
+    all("SELECT s.title, e.ts, e.detail FROM ingest_sources s " +
+        "JOIN LATERAL (SELECT ts, detail FROM ingest_events WHERE source_id = s.id AND event = 'source_error' ORDER BY ts DESC LIMIT 1) e ON TRUE " +
+        "LEFT JOIN ingest_watermarks w ON w.source_id = s.id " +
+        "WHERE s.enabled = 1 AND (w.updated_at IS NULL OR e.ts > w.updated_at) ORDER BY e.ts DESC LIMIT 3", []).catch(() => []),
+  ]);
+  return { src, items, saved, errs };
+}
+
 async function showBotUserPanel(ctx) {
   const uid = ctx.uid || ctx.from?.id;
   if (String(uid) !== String(process.env.OWNER_ID)) return ctx.answerCbQuery('🚫').catch(() => {});
-  const rows = [
-    [kbBtn('📥 مراقبة الملفات', 'ing_list'), kbBtn('📋 مراجعة الملفات', 'inr_q')],
-    [kbBtn('◀️ رجوع', 'grp_main')],
-  ];
-  return eos(ctx, '🤖 *Bot User*\n━━━━━━━━━━━━━━━━━━\n\nاختر:', { parse_mode: 'Markdown', ...kbBuild(rows) });
+  let ub = { online: false, secondsAgo: null, username: null };
+  try { ub = require('../routes/internal').getUserbotStatus() || ub; } catch (_) { /* لا شيء */ }
+  const st = await _botUserStats();
+  const num = (r, k) => (r ? (Number(r[k]) || 0) : null);
+  const fmt = (v) => (v === null ? '—' : String(v));
+  const total = num(st.src, 'total'), en = num(st.src, 'en');
+  const pending = num(st.items, 'pending'), saving = num(st.items, 'saving');
+  const retrying = num(st.items, 'retrying'), failed = num(st.items, 'failed');
+  const saved = num(st.saved, 'n');
+
+  const lines = ['🤖 Bot User', '━━━━━━━━━━━━━━━━━━', ''];
+  lines.push(ub.online
+    ? 'UserBot: 🟢 متصل' + (ub.username ? ' (@' + ub.username + ')' : '')
+    : 'UserBot: 🔴 غير متصل' + (ub.secondsAgo != null ? ' — آخر نبضة منذ ' + _AGO(ub.secondsAgo * 1000) : ' — لم تصل نبضة منذ آخر تشغيل للبوت'));
+  lines.push('المصادر المراقَبة: ' + fmt(en) + ' من ' + fmt(total));
+  if (!ub.online && en > 0) lines.push('⚠️ المراقبة لا تعمل ما دام UserBot غير متصل.');
+  lines.push('');
+  lines.push('📋 بانتظار المراجعة: ' + fmt(pending));
+  lines.push('💾 قيد الحفظ: ' + fmt(saving));
+  if (retrying) lines.push('🔁 تُعاد تلقائياً: ' + retrying);
+  lines.push('✅ حُفظ في آخر 24 ساعة: ' + fmt(saved));
+  lines.push('⚠️ فشل الحفظ: ' + fmt(failed));
+
+  const now = Date.now();
+  const errs = st.errs || [];
+  if (errs.length) {
+    lines.push('', 'أخطاء المراقبة:');
+    errs.forEach((e) => {
+      let msg = '';
+      try { msg = JSON.parse(e.detail).error || ''; } catch (_) { msg = ''; }
+      lines.push('• «' + _clipT(cleanTitle(e.title, 'قروب'), 18) + '» منذ ' + _AGO(now - new Date(e.ts).getTime()) + (msg ? ': ' + _clipT(msg, 70) : ''));
+    });
+  }
+  let hhmm = '';
+  try { hhmm = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Algiers', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()); }
+  catch (_) { hhmm = new Date().toISOString().slice(11, 16) + ' UTC'; }
+  lines.push('', '🕒 آخر تحديث: ' + hhmm);
+
+  const rows = [[kbBtn('📥 مراقبة الملفات', 'ing_list'), kbBtn('📋 مراجعة الملفات' + (pending ? ' (' + pending + ')' : ''), 'inr_q')]];
+  if (failed) rows.push([kbBtn('⚠️ فشل الحفظ (' + failed + ')', 'gp_botuser_failed')]);
+  rows.push([kbBtn('🔄 تحديث', 'gp_botuser'), kbBtn('◀️ رجوع', 'grp_main')]);
+  return eos(ctx, lines.join('\n'), kbBuild(rows));
 }
+
+async function showBotUserFailed(ctx) {
+  const uid = ctx.uid || ctx.from?.id;
+  if (String(uid) !== String(process.env.OWNER_ID)) return ctx.answerCbQuery('🚫').catch(() => {});
+  const list = await all("SELECT i.id, i.file_name, i.last_error, s.title FROM ingest_items i LEFT JOIN ingest_sources s ON s.id = i.source_id WHERE i.save_state = 'failed_permanent' ORDER BY i.updated_at DESC LIMIT 10", []).catch(() => null);
+  let arLabel = (x) => _clipT(x, 60) || '—';
+  try { const m = require('./ingest_save').arLabel; if (typeof m === 'function') arLabel = m; } catch (_) { /* لا شيء */ }
+  const lines = ['⚠️ فشل الحفظ', '━━━━━━━━━━━━━━━━━━', ''];
+  if (list === null) lines.push('تعذّر قراءة البيانات الآن.');
+  else if (!list.length) lines.push('لا توجد ملفات فاشلة ✅');
+  else {
+    list.forEach((r) => {
+      lines.push('#' + r.id + ' «' + _clipT(r.file_name || 'ملف', 40) + '»');
+      lines.push('   القروب: ' + _clipT(cleanTitle(r.title, '—'), 24) + ' · السبب: ' + arLabel(r.last_error));
+    });
+    lines.push('', 'بعد إصلاح السبب أعد المحاولة بالأمر:', '/ingest_save retry ' + list[0].id, '(غيّر الرقم حسب الملف)');
+  }
+  const rows = [[kbBtn('🔄 تحديث', 'gp_botuser_failed'), kbBtn('◀️ رجوع', 'gp_botuser')]];
+  return eos(ctx, lines.join('\n'), kbBuild(rows));
+}
+
 
 module.exports = {
   showMyGroups, showMainMenu, showGroupPanel, showGroupsLeaderboard, cleanDeadGroups,

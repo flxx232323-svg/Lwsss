@@ -374,4 +374,4 @@ function register(bot, deps = {}) {
   return saver;
 }
 
-module.exports = { register, kick, createSaver, parseArgs, titleFor, normStage, STAGES, MAX_ATTEMPTS };
+module.exports = { register, kick, createSaver, parseArgs, titleFor, normStage, STAGES, MAX_ATTEMPTS, arLabel };
