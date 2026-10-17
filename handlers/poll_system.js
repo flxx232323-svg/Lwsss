@@ -7,6 +7,23 @@
 const { get, all, run } = require('../database/db');
 const logger = require('../utils/logger');
 
+// FIX: options قد يكون JSONB (Array جاهز) أو TEXT
+function _parseOpts(v) {
+  if (Array.isArray(v)) return v;
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch (_) { return []; }
+}
+// FIX: نسب مجموعها 100% بالضبط
+function _pcts(counts, total) {
+  if (!total) return counts.map(() => 0);
+  const raw = counts.map(c => c * 100 / total);
+  const out = raw.map(Math.floor);
+  const left = 100 - out.reduce((a, b) => a + b, 0);
+  raw.map((r, i) => [r - Math.floor(r), i]).sort((a, b) => b[0] - a[0]).slice(0, left).forEach(([, i]) => { out[i]++; });
+  return out;
+}
+// FIX: BIGINT يرجع نص و ctx.from.id رقم
+const _canManage = (ctx, poll) => String(poll && poll.created_by) === String(ctx.from && ctx.from.id) || !!ctx.isOwner || !!ctx.isAdmin;
+
 // ══════════════════════════════════════════
 // 🗄️ إنشاء الجداول
 // ══════════════════════════════════════════
@@ -52,7 +69,7 @@ async function buildPollKb(pollId, options) {
   // [تعديل] كل زر يعرض النسبة % فقط (بدون عدد الأصوات)
   const buttons = options.map((opt, i) => {
     const cnt = countMap[i] || 0;
-    const pct = total > 0 ? Math.round(cnt * 100 / total) : 0;
+    const pct = _pcts(options.map((_, k) => countMap[k] || 0), total)[i];
     return { text: `${opt} (${pct}%)`, callback_data: `poll_vote_${pollId}_${i}` };
   });
 
@@ -259,14 +276,16 @@ async function handleVote(ctx, pollId, optionIdx) {
   // تحقق من التصويت السابق
   const existing = await get('SELECT option_id FROM poll_votes WHERE poll_id=$1 AND user_id=$2', [pollId, userId]).catch(() => null);
   if (existing) {
-    const opts = JSON.parse(poll.options);
+    const opts = _parseOpts(poll.options);
     return ctx.answerCbQuery(`⚠️ صوّتت مسبقاً على: ${opts[existing.option_id]}`, { show_alert: true }).catch(() => {});
   }
 
   // سجّل الصوت
-  await run('INSERT INTO poll_votes(poll_id, user_id, option_id) VALUES($1,$2,$3)', [pollId, userId, optionIdx]).catch(() => {});
+  let _ins = true;
+  await run('INSERT INTO poll_votes(poll_id, user_id, option_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [pollId, userId, optionIdx]).catch(e => { _ins = false; logger.error('[Poll vote] ' + e.message); });
+  if (!_ins) return ctx.answerCbQuery('⚠️ تعذّر تسجيل صوتك، حاول مجدداً', { show_alert: true }).catch(() => {});
 
-  const opts = JSON.parse(poll.options);
+  const opts = _parseOpts(poll.options);
   await ctx.answerCbQuery(`✅ صوّتت على: ${opts[optionIdx]}`).catch(() => {});
 
   // حدّث الأزرار
@@ -281,7 +300,7 @@ async function showResults(ctx, pollId) {
   const poll = await get('SELECT * FROM polls WHERE id=$1', [pollId]).catch(() => null);
   if (!poll) return ctx.answerCbQuery('❌ غير موجود', { show_alert: true }).catch(() => {});
 
-  const opts = JSON.parse(poll.options);
+  const opts = _parseOpts(poll.options);
   const votes = await all('SELECT option_id, COUNT(*) as cnt FROM poll_votes WHERE poll_id=$1 GROUP BY option_id', [pollId]).catch(() => []);
   const total = votes.reduce((s, v) => s + parseInt(v.cnt), 0);
   const countMap = {};
@@ -290,7 +309,7 @@ async function showResults(ctx, pollId) {
   let txt = `📊 *نتائج التصويت*\n━━━━━━━━━━━━━━━━\n\n❓ *${poll.question}*\n\n`;
   opts.forEach((opt, i) => {
     const cnt = countMap[i] || 0;
-    const pct = total > 0 ? Math.round(cnt * 100 / total) : 0;
+    const pct = _pcts(opts.map((_, k) => countMap[k] || 0), total)[i];
     const bar = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
     txt += `${i + 1}. *${opt}*\n   ${bar} ${pct}% (${cnt})\n\n`;
   });
@@ -299,7 +318,7 @@ async function showResults(ctx, pollId) {
 
   await ctx.answerCbQuery('').catch(() => {});
 
-  const kb = poll.is_active && ctx.from.id === poll.created_by ? [
+  const kb = poll.is_active && _canManage(ctx, poll) ? [
     [{ text: '🔴 إنهاء التصويت', callback_data: `poll_end_${pollId}` }],
   ] : [];
 
@@ -315,7 +334,7 @@ async function endPoll(telegram, pollId) {
 
   await run('UPDATE polls SET is_active=FALSE WHERE id=$1', [pollId]).catch(() => {});
 
-  const opts = JSON.parse(poll.options);
+  const opts = _parseOpts(poll.options);
   const votes = await all('SELECT option_id, COUNT(*) as cnt FROM poll_votes WHERE poll_id=$1 GROUP BY option_id', [pollId]).catch(() => []);
   const total = votes.reduce((s, v) => s + parseInt(v.cnt), 0);
   const countMap = {};
@@ -333,7 +352,7 @@ async function endPoll(telegram, pollId) {
   // ترتيب الخيارات من الأكثر للأقل
   const sortedOpts = opts.map((opt, i) => ({
     opt, cnt: countMap[i] || 0,
-    pct: total > 0 ? Math.round((countMap[i] || 0) * 100 / total) : 0
+    pct: _pcts(opts.map((_, k) => countMap[k] || 0), total)[i]
   })).sort((a, b) => b.cnt - a.cnt);
 
   let txt = `📋 *${poll.question}*\n`;
@@ -385,7 +404,7 @@ async function handleCallback(ctx, data) {
   if (data.startsWith('poll_end_')) {
     const pollId = parseInt(data.replace('poll_end_', ''));
     const poll = await get('SELECT created_by FROM polls WHERE id=$1', [pollId]).catch(() => null);
-    if (poll?.created_by !== ctx.from.id) return ctx.answerCbQuery('🚫', { show_alert: true }).catch(() => {});
+    if (!_canManage(ctx, poll)) return ctx.answerCbQuery('🚫', { show_alert: true }).catch(() => {});
     await ctx.answerCbQuery('✅ تم إنهاء التصويت').catch(() => {});
     await endPoll(ctx.telegram, pollId);
     return true;
