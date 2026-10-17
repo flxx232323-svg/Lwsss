@@ -32,12 +32,63 @@ const P = PENDING.map((s) => `'${s}'`).join(',');
 const PAGE = 8;
 const PICK_MAX = 30;
 
+// ── المرحلة 3: أدوات المراجعة السريعة ──
+const PREVIEW_ERR = {
+  protected: 'القروب يمنع إعادة التوجيه (حماية المحتوى).',
+  gone: 'الرسالة الأصلية محذوفة.',
+  chat: 'البوت لا يرى القروب المصدر.',
+  rights: 'صلاحيات البوت لا تكفي.',
+  rate: 'حدّ معدّل Telegram، حاول بعد لحظات.',
+};
+function previewErrText(e) {
+  let k = 'other';
+  try { k = require('./ingest_probe').classifyError(e).kind; } catch (_) { /* لا شيء */ }
+  return '⚠️ ' + (PREVIEW_ERR[k] || 'تعذّرت المعاينة.');
+}
+function algTime(d) {
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '—';
+  try {
+    const p = {};
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Algiers', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+      .formatToParts(dt).forEach((x) => { p[x.type] = x.value; });
+    return p.year + '-' + p.month + '-' + p.day + ' ' + (p.hour === '24' ? '00' : p.hour) + ':' + p.minute + ' (الجزائر)';
+  } catch (_) { return dt.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'; }
+}
+function buildRejectConfirmView({ sid, tp, title, topicName, total }) {
+  const lines = [
+    '⚠️ رفض كل ملفات الدفعة؟', '',
+    '«' + (short(title, 30) || 'قروب') + '» · ' + topicLabel(tp, topicName),
+    'عدد الملفات التي سترفض: ' + total,
+    'لن يُحفظ أي منها في المكتبة، ولا تراجع من هنا.',
+  ];
+  const rows = [
+    [kbBtn('✅ نعم، ارفض الكل (' + total + ')', 'inr_bx_' + sid + '_' + tp)],
+    [kbBtn('↩️ إلغاء', 'inr_b_' + sid + '_' + tp)],
+  ];
+  return { text: lines.join('\n'), rows };
+}
+async function rejectBatch(pg, sid, tp, ownerId) {
+  const r = await pg.query(
+    "UPDATE ingest_items SET state = 'rejected', updated_at = NOW() " +
+    "WHERE source_id = $1 AND COALESCE(topic_id, 0) = $2::bigint AND state IN (" + P + ") RETURNING id", [sid, tp]);
+  if (r.rowCount) {
+    await pg.query(
+      "INSERT INTO ingest_events (actor_kind, actor_id, event, source_id, detail) VALUES ('owner', $1, 'batch_rejected', $2, $3)",
+      [ownerId, sid, JSON.stringify({ topic: String(tp), count: r.rowCount })]);
+  }
+  return r.rowCount;
+}
+
 const RX = {
   queue: /^inr_q$/,
   batch: /^inr_b_(\d{1,9})_(\d{1,12})(?:_(\d{1,3}))?$/,
   item: /^inr_i_(\d{1,19})$/,
   itemApprove: /^inr_ia_(\d{1,19})$/,
   itemReject: /^inr_ir_(\d{1,19})$/,
+  batchReject: /^inr_br_(\d{1,9})_(\d{1,12})$/,
+  batchRejectOk: /^inr_bx_(\d{1,9})_(\d{1,12})$/,
+  itemPreview: /^inr_ip_(\d{1,19})$/,
   batchApprove: /^inr_ba_(\d{1,9})_(\d{1,12})$/,
   pick: /^inr_pk_([bi][\d.]{1,35})_([symuc])_(\d{1,9})$/,
   pickDone: /^inr_pc_([bi][\d.]{1,35})_(\d{1,9})$/,
@@ -58,6 +109,9 @@ function parseCb(data) {
   if ((m = RX.item.exec(data))) return { a: 'item', id: m[1] };
   if ((m = RX.itemApprove.exec(data))) return { a: 'itemApprove', id: m[1] };
   if ((m = RX.itemReject.exec(data))) return { a: 'itemReject', id: m[1] };
+  if ((m = RX.batchReject.exec(data))) return { a: 'batchReject', sid: m[1], tp: m[2] };
+  if ((m = RX.batchRejectOk.exec(data))) return { a: 'batchRejectOk', sid: m[1], tp: m[2] };
+  if ((m = RX.itemPreview.exec(data))) return { a: 'itemPreview', id: m[1] };
   if ((m = RX.batchApprove.exec(data))) return { a: 'batchApprove', sid: m[1], tp: m[2] };
   if ((m = RX.pick.exec(data))) { const t = parseTarget(m[1]); return t ? { a: 'pick', t, T: m[1], lvl: m[2], parent: m[3] } : null; }
   if ((m = RX.pickDone.exec(data))) { const t = parseTarget(m[1]); return t ? { a: 'pickDone', t, T: m[1], cat: m[2] } : null; }
@@ -111,6 +165,7 @@ function buildBatchView({ sid, tp, title, topicName, pathText, items, page, tota
   if (nav.length) rows.push(nav);
   rows.push([kbBtn('📂 تحديد مسار الموضوع', `inr_pk_b${sid}.${tp}_s_0`)]);
   rows.push([kbBtn(`✅ موافقة على الكل (${total - noPath})`, `inr_ba_${sid}_${tp}`)]);
+  rows.push([kbBtn(`❌ رفض الكل (${total})`, `inr_br_${sid}_${tp}`)]);
   rows.push([kbBtn('◀️ رجوع', 'inr_q')]);
   return { text: lines.join('\n'), rows };
 }
@@ -123,13 +178,14 @@ function buildItemView({ item, srcTitle, topicName, pathText, ownPath, dupCount,
   ];
   if (senderLabel) lines.push(`المرسل: ${senderLabel}`);
   if (fmtSize(item.size)) lines.push(`الحجم: ${fmtSize(item.size)}${item.mime_type ? ' · ' + short(item.mime_type, 30) : ''}`);
-  if (item.message_date) lines.push(`التاريخ: ${new Date(item.message_date).toISOString().slice(0, 16).replace('T', ' ')} UTC`);
+  if (item.message_date) lines.push(`التاريخ: ${algTime(item.message_date)}`);
   if (item.caption) lines.push(`التعليق: ${short(item.caption, 120)}`);
   lines.push(`المسار: ${pathText || '⚠️ غير محدد'}${pathText && ownPath ? ' (خاص بهذا الملف)' : ''}`);
   if (dupCount > 0) lines.push(`⚠️ ملف مشابه (نفس الاسم والحجم) مسجَّل ${dupCount} مرة سابقاً.`);
   lines.push(`الحالة: ${PENDING.includes(item.state) ? 'بانتظار المراجعة' : item.state}`);
   const rows = [];
   if (PENDING.includes(item.state)) {
+    rows.push([kbBtn('👁 معاينة الملف', `inr_ip_${item.id}`)]);
     rows.push([kbBtn('✅ موافقة', `inr_ia_${item.id}`), kbBtn('❌ رفض', `inr_ir_${item.id}`)]);
     rows.push([kbBtn('📂 مسار هذا الملف فقط', `inr_pk_i${item.id}_s_0`)]);
   }
@@ -214,7 +270,7 @@ async function loadBatch(pg, sid, tp, page) {
     `SELECT i.id, i.source_message_id::text AS source_message_id, i.file_name, i.caption, i.size_bytes::text AS size,
             i.suggested_category_id AS own_cat, r.category_id AS rule_cat
        FROM ingest_items i ${RULE_JOIN} WHERE ${cond}
-      ORDER BY i.message_date NULLS LAST, i.id LIMIT ${PAGE} OFFSET $3`, [sid, tp, page * PAGE])).rows;
+      ORDER BY i.message_date DESC NULLS LAST, i.id DESC LIMIT ${PAGE} OFFSET $3`, [sid, tp, page * PAGE])).rows;
   return { src, topicName, rulePath: await pathText(pg, rule && rule.category_id), items, total: stats.total, noPath: stats.no_path };
 }
 
@@ -425,6 +481,28 @@ async function handle(ctx, data, deps = {}) {
     await ack(n ? `✅ وُوفق على ${n} ملف${left ? ` · بقي ${left} بلا مسار` : ''}` : '⚠️ لا ملفات لها مسار صالح. حدّد المسار أولاً.', !n);
     const v = await batchScreen(pg, cb.sid, cb.tp, 0);
     return render(ctx, v || await queueView(pg));
+  }
+
+  if (cb.a === 'batchReject') {
+    const b = await loadBatch(pg, cb.sid, cb.tp, 0);
+    if (!b || b.total === 0) { await ack('لا ملفات بانتظار المراجعة.', true); return render(ctx, await queueView(pg)); }
+    await ack();
+    return render(ctx, buildRejectConfirmView({ sid: cb.sid, tp: cb.tp, title: b.src.title, topicName: b.topicName, total: b.total }));
+  }
+
+  if (cb.a === 'batchRejectOk') {
+    const n = await rejectBatch(pg, cb.sid, cb.tp, ownerId);
+    await ack(n ? '❌ رُفض ' + n + ' ملف' : 'لا ملفات بانتظار المراجعة.', !n);
+    return render(ctx, await queueView(pg));
+  }
+
+  if (cb.a === 'itemPreview') {
+    const v = await loadItem(pg, cb.id);
+    if (!v) return ack('⚠️ الملف غير موجود.', true);
+    try {
+      await ctx.telegram.forwardMessage(ownerId, v.item.chat_id, Number(v.item.source_message_id));
+    } catch (e) { return ack(previewErrText(e), true); }
+    return ack('👁 أُرسل الملف إلى محادثتك');
   }
 
   if (cb.a === 'pick') {

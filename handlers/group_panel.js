@@ -359,6 +359,7 @@ async function handleCallback(ctx, data) {
   if (data === 'gp_defaults') return showDefaultSettings(ctx);
   if (data === 'gp_botuser') return showBotUserPanel(ctx);
   if (data === 'gp_botuser_failed') return showBotUserFailed(ctx);
+  if (data.startsWith('gp_botuser_retry_')) return retryBotUser(ctx, data);
   if (data === 'gp_def_setmsg' || data === 'gp_def_setphoto' || data === 'gp_def_reset') return handleDefaultCallback(ctx, data);
 
   if (data === 'gp_broadcast_sp') return showBroadcastSpecPicker(ctx);
@@ -969,10 +970,27 @@ async function showBotUserFailed(ctx) {
       lines.push('#' + r.id + ' «' + _clipT(r.file_name || 'ملف', 40) + '»');
       lines.push('   القروب: ' + _clipT(cleanTitle(r.title, '—'), 24) + ' · السبب: ' + arLabel(r.last_error));
     });
-    lines.push('', 'بعد إصلاح السبب أعد المحاولة بالأمر:', '/ingest_save retry ' + list[0].id, '(غيّر الرقم حسب الملف)');
+    lines.push('', 'اضغط 🔁 لإعادة المحاولة بعد إصلاح السبب (بعض الأسباب، مثل الاسم المكرر، تحتاج تعديلاً قبل الإعادة).');
   }
-  const rows = [[kbBtn('🔄 تحديث', 'gp_botuser_failed'), kbBtn('◀️ رجوع', 'gp_botuser')]];
+  const rows = [];
+  if (list && list.length) {
+    for (let i = 0; i < list.length; i += 4) rows.push(list.slice(i, i + 4).map((r) => kbBtn('🔁 #' + r.id, 'gp_botuser_retry_' + r.id)));
+    rows.push([kbBtn('🔁 إعادة محاولة الكل', 'gp_botuser_retry_all')]);
+  }
+  rows.push([kbBtn('🔄 تحديث', 'gp_botuser_failed'), kbBtn('◀️ رجوع', 'gp_botuser')]);
   return eos(ctx, lines.join('\n'), kbBuild(rows));
+}
+
+async function retryBotUser(ctx, data) {
+  const uid = ctx.uid || ctx.from?.id;
+  if (String(uid) !== String(process.env.OWNER_ID)) return ctx.answerCbQuery('🚫').catch(() => {});
+  const arg = String(data).slice('gp_botuser_retry_'.length);
+  if (arg !== 'all' && !/^\d{1,19}$/.test(arg)) return ctx.answerCbQuery('❌ بيانات غير صالحة.').catch(() => {});
+  let n = 0;
+  try { n = await require('./ingest_save').retryFailed(arg === 'all' ? null : arg); }
+  catch (_) { return ctx.answerCbQuery('⚠️ تعذّرت إعادة المحاولة.', { show_alert: true }).catch(() => {}); }
+  await ctx.answerCbQuery(n ? '🔁 أُعيد ' + n + ' ملف إلى الطابور' : '⚠️ ليس في حالة فشل.', { show_alert: !n }).catch(() => {});
+  return showBotUserFailed(ctx);
 }
 
 

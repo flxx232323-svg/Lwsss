@@ -374,4 +374,19 @@ function register(bot, deps = {}) {
   return saver;
 }
 
-module.exports = { register, kick, createSaver, parseArgs, titleFor, normStage, STAGES, MAX_ATTEMPTS, arLabel };
+// إعادة محاولة الملفات الفاشلة نهائياً (id محدد، أو null = كلها حتى 200). يعيد عدد ما أُعيد.
+async function retryFailed(id) {
+  if (!_saver) return 0;
+  let ids;
+  if (id) ids = [String(id)];
+  else {
+    const r = await _saver._d.getPg().query("SELECT id FROM ingest_items WHERE state = 'approved' AND save_state = 'failed_permanent' ORDER BY id LIMIT 200");
+    ids = r.rows.map((x) => String(x.id));
+  }
+  let n = 0;
+  for (const x of ids) { if (await _saver.retry(x)) n++; }
+  if (n > 0) kick();
+  return n;
+}
+
+module.exports = { register, kick, createSaver, parseArgs, titleFor, normStage, STAGES, MAX_ATTEMPTS, arLabel, retryFailed };
