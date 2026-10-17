@@ -540,7 +540,7 @@ module.exports.registerCallbacks = function(bot, deps) {
 
     // 🛡️ شبكة أمان: امسح أي state عالقة عند أي ضغطة زر (تنقل/رجوع/إلغاء)،
     // إلا الأزرار اللي هي خطوة داخل ويزارد وتحتاج تقرا الحالة القديمة باش تكمل
-    const _wizardStepPrefixes = ['cg_hasans_', 'cg_showans_', 'mq_correct_', 'mq_diff_'];
+    const _wizardStepPrefixes = ['cg_hasans_', 'cg_showans_', 'mq_correct_', 'mq_diff_', 'mg_pick_emoji_'];
     if (!_wizardStepPrefixes.some(p => _raw.startsWith(p))) {
       require('../utils/stateManager').delState(ctx.from.id).catch(() => {});
     }
