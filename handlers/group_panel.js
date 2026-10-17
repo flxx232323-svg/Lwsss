@@ -81,22 +81,17 @@ async function showGroupPanel(ctx) {
     text += '\n_لا توجد قروبات بعد_\n';
     text += '_أضف البوت لقروب وسيظهر هنا_';
   } else {
-    groups.forEach(g => {
+    const _gbtns = groups.map(g => {
       const sp = g.specialty_id ? '🎓' : '📚';
       const w  = g.welcome_enabled ? '✅' : '❌';
-      rows.push([kbBtn(sp + ' ' + cleanTitle(g.title, 'قروب ' + g.chat_id).substring(0,30) + ' ' + w, 'gp_view_' + g.chat_id)]);
+      return kbBtn(sp + ' ' + cleanTitle(g.title, 'قروب ' + g.chat_id).substring(0, 14) + ' ' + w, 'gp_view_' + g.chat_id);
     });
-    rows.push([kbBtn('🏆 ترتيب القروبات (الأعضاء)', 'gp_leaderboard')]);
+    for (let i = 0; i < _gbtns.length; i += 2) rows.push(_gbtns.slice(i, i + 2)); // 2×2
   }
 
-  rows.push([
-    kbBtn('📢 رسالة للكل',    'gp_broadcast_0'),
-    kbBtn('🎓 رسالة لتخصص', 'gp_broadcast_sp'),
-  ]);
-  rows.push([kbBtn('📨 أضفني لقروب (رابط دعوة)', 'gp_invite_me_list')]);
-  if (String(ctx.from?.id) === String(process.env.OWNER_ID)) rows.push([kbBtn('📥 مراقبة الملفات', 'ing_list'), kbBtn('📋 مراجعة الملفات', 'inr_q')]);
+  rows.push([kbBtn('📢 رسالة للكل', 'gp_broadcast_0')]);
   rows.push([kbBtn('⚙️ الإعدادات الافتراضية للقروبات الجديدة', 'gp_defaults')]);
-  rows.push([kbBtn('◀️ رجوع', 'mg_menu')]);
+  rows.push([kbBtn('◀️ رجوع', 'grp_main')]);
 
   return eos(ctx, text, { parse_mode: 'Markdown', ...kbBuild(rows) });
 }
@@ -181,7 +176,7 @@ async function showGroupsLeaderboard(ctx, opts = {}) {
   if (!groups.length) {
     return eos(ctx, '📭 لا توجد قروبات نشطة بعد.', {
       parse_mode: 'Markdown',
-      ...kbBuild([[kbBtn('◀️ رجوع', 'gp_panel')]]),
+      ...kbBuild([[kbBtn('◀️ رجوع', 'grp_main')]]),
     });
   }
 
@@ -195,7 +190,7 @@ async function showGroupsLeaderboard(ctx, opts = {}) {
   if (!ranked.length) {
     return eos(ctx, '⚠️ تعذّر جلب بيانات الأعضاء حالياً، حاول لاحقاً.', {
       parse_mode: 'Markdown',
-      ...kbBuild([[kbBtn('🔄 إعادة المحاولة', 'gp_leaderboard_refresh')], [kbBtn('◀️ رجوع', 'gp_panel')]]),
+      ...kbBuild([[kbBtn('🔄 إعادة المحاولة', 'gp_leaderboard_refresh')], [kbBtn('◀️ رجوع', 'grp_main')]]),
     });
   }
 
@@ -216,7 +211,7 @@ async function showGroupsLeaderboard(ctx, opts = {}) {
 
   const rows = [
     [kbBtn('🔄 تحديث', 'gp_leaderboard_refresh')],
-    [kbBtn('◀️ رجوع', 'gp_panel')],
+    [kbBtn('◀️ رجوع', 'grp_main')],
   ];
   return eos(ctx, text, { parse_mode: 'Markdown', ...kbBuild(rows) });
 }
@@ -354,7 +349,7 @@ async function showBroadcastSpecPicker(ctx) {
   const specs = await all('SELECT * FROM specialties ORDER BY name').catch(() => []);
   const rows = specs.map(s => [kbBtn('🎓 ' + s.name, 'gp_broadcast_' + s.id)]);
   rows.push([kbBtn('📣 كل القروبات', 'gp_broadcast_0')]);
-  rows.push([kbBtn('◀️ رجوع', 'gp_panel')]);
+  rows.push([kbBtn('◀️ رجوع', 'grp_main')]);
   return eos(ctx, '📢 *ارسال رسالة للقروبات*\n━━━━━━━━━━━━━━━━━━\n\nاختر التخصص:', { parse_mode: 'Markdown', ...kbBuild(rows) });
 }
 
@@ -362,6 +357,7 @@ async function handleCallback(ctx, data) {
   const uid = ctx.uid;
   if (data === 'gp_panel') { const uid = ctx.uid || ctx.from?.id; const isOwner = uid === parseInt(process.env.OWNER_ID); return isOwner ? showGroupPanel(ctx) : showMyGroups(ctx); }
   if (data === 'gp_defaults') return showDefaultSettings(ctx);
+  if (data === 'gp_botuser') return showBotUserPanel(ctx);
   if (data === 'gp_def_setmsg' || data === 'gp_def_setphoto' || data === 'gp_def_reset') return handleDefaultCallback(ctx, data);
 
   if (data === 'gp_broadcast_sp') return showBroadcastSpecPicker(ctx);
@@ -727,12 +723,14 @@ async function showMainMenu(ctx) {
   const groups  = await all('SELECT COUNT(*) AS cnt FROM group_chats WHERE is_active!=0').then(r => r[0]?.cnt || 0).catch(() => 0);
   const channels = await all('SELECT COUNT(*) AS cnt FROM group_chats WHERE specialty_id IS NOT NULL').then(r => r[0]?.cnt || 0).catch(() => 0);
 
+  const _isOwner = String(ctx.uid || ctx.from?.id) === String(process.env.OWNER_ID);
   const rows = [
     [kbBtn('👥 إدارة القروبات',         'gp_panel')],
-
-
-    [kbBtn('◀️ رجوع',                   'mg_menu')],
+    [kbBtn('🏆 ترتيب القروبات', 'gp_leaderboard'), kbBtn('🎓 رسالة لتخصص', 'gp_broadcast_sp')],
+    [kbBtn('📨 أضفني لقروب (رابط دعوة)', 'gp_invite_me_list')],
   ];
+  if (_isOwner) rows.push([kbBtn('🤖 Bot User', 'gp_botuser')]);
+  rows.push([kbBtn('◀️ رجوع',                   'mg_menu')]);
 
   return eos(ctx,
     '👥 *القروبات والقنوات*\n' +
@@ -806,7 +804,7 @@ async function handleInviteMeList(ctx) {
   for (const g of groups.slice(0, 20)) {
     rows.push([{ text: '🔗 ' + cleanTitle(g.title, String(g.chat_id)).substring(0, 30), callback_data: 'gp_gen_invite_' + g.chat_id }]);
   }
-  rows.push([{ text: '◀️ رجوع', callback_data: 'gp_panel' }]);
+  rows.push([{ text: '◀️ رجوع', callback_data: 'grp_main' }]);
 
   return ctx.editMessageText(text + '_اضغط على القروب لتوليد رابط دعوة_', {
     parse_mode: 'Markdown',
@@ -872,6 +870,19 @@ async function cleanDeadGroups(ctx) {
     }
   }
   return ctx.reply(`✅ تم تنظيف *${cleaned}* قروب ميت من أصل *${groups.length}*`, { parse_mode: 'Markdown' }).catch(() => {});
+}
+
+// ══════════════════════════════════════════════════════════
+// 🤖 Bot User — يجمع مراقبة الملفات ومراجعة الملفات (Owner فقط)
+// ══════════════════════════════════════════════════════════
+async function showBotUserPanel(ctx) {
+  const uid = ctx.uid || ctx.from?.id;
+  if (String(uid) !== String(process.env.OWNER_ID)) return ctx.answerCbQuery('🚫').catch(() => {});
+  const rows = [
+    [kbBtn('📥 مراقبة الملفات', 'ing_list'), kbBtn('📋 مراجعة الملفات', 'inr_q')],
+    [kbBtn('◀️ رجوع', 'grp_main')],
+  ];
+  return eos(ctx, '🤖 *Bot User*\n━━━━━━━━━━━━━━━━━━\n\nاختر:', { parse_mode: 'Markdown', ...kbBuild(rows) });
 }
 
 module.exports = {

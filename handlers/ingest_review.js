@@ -90,7 +90,7 @@ function buildQueueView({ counts, batches }) {
     `inr_b_${b.source_id}_${b.tp}`)]);
   if (!batches.length) lines.push('', 'لا توجد ملفات بانتظار المراجعة.', 'تأكد أن المراقبة مفعّلة للقروب وأن الملفات مرسلة من حسابك.');
   else lines.push('', '⚠️ = دفعة فيها ملفات بلا مسار.', 'اختر دفعة:');
-  rows.push([kbBtn('◀️ رجوع', 'gp_panel')]);
+  rows.push([kbBtn('◀️ رجوع', 'gp_botuser')]);
   return { text: lines.join('\n'), rows };
 }
 

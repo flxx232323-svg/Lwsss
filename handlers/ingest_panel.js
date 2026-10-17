@@ -68,7 +68,7 @@ function buildListView(groups) {
     kbBtn(`${g.enabled === 1 ? '✅' : '⏸'} ${shortTitle(g.title, 'قروب ' + g.chat_id)}`, `ing_g_${g.chat_id}`),
   ]);
   if (!groups.length) lines.push('', 'لا توجد قروبات مسجَّلة بعد.');
-  rows.push([kbBtn('◀️ رجوع', 'gp_panel')]);
+  rows.push([kbBtn('◀️ رجوع', 'gp_botuser')]);
   return { text: lines.join('\n'), rows };
 }
 
