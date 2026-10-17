@@ -84,7 +84,7 @@ async function showGroupPanel(ctx) {
     const _gbtns = groups.map(g => {
       const sp = g.specialty_id ? '🎓' : '📚';
       const w  = g.welcome_enabled ? '✅' : '❌';
-      return kbBtn(sp + ' ' + cleanTitle(g.title, 'قروب ' + g.chat_id).substring(0, 14) + ' ' + w, 'gp_view_' + g.chat_id);
+      return kbBtn(sp + ' ' + Array.from(cleanTitle(g.title, 'قروب ' + g.chat_id)).slice(0, 14).join('') + ' ' + w, 'gp_view_' + g.chat_id);
     });
     for (let i = 0; i < _gbtns.length; i += 2) rows.push(_gbtns.slice(i, i + 2)); // 2×2
   }
