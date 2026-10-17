@@ -62,7 +62,7 @@ async function buildPollKb(pollId, options) {
     'SELECT option_id, COUNT(*) as cnt FROM poll_votes WHERE poll_id=$1 GROUP BY option_id',
     [pollId]
   ).catch(() => []);
-  const total = votes.reduce((s, v) => s + parseInt(v.cnt), 0);
+  const total = votes.reduce((s, v) => s + ((v.option_id >= 0 && v.option_id < options.length) ? parseInt(v.cnt) : 0), 0);
   const countMap = {};
   votes.forEach(v => { countMap[v.option_id] = parseInt(v.cnt); });
 
@@ -235,6 +235,8 @@ async function sendPoll(ctx, adminId) {
   if (!poll) return ctx.answerCbQuery('❌ خطأ في الحفظ', { show_alert: true }).catch(() => {});
 
   pollDrafts.delete(adminId);
+  // FIX: تصويت جديد = لا أصوات. نحذف أي صفوف قديمة عالقة بنفس الرقم _stalePurged
+  await _run('DELETE FROM poll_votes WHERE poll_id=$1', [poll.id]).catch(() => {});
 
   const kb = await buildPollKb(poll.id, draft.options);
   const pollText = buildPollText(poll);
@@ -302,7 +304,7 @@ async function showResults(ctx, pollId) {
 
   const opts = _parseOpts(poll.options);
   const votes = await all('SELECT option_id, COUNT(*) as cnt FROM poll_votes WHERE poll_id=$1 GROUP BY option_id', [pollId]).catch(() => []);
-  const total = votes.reduce((s, v) => s + parseInt(v.cnt), 0);
+  const total = votes.reduce((s, v) => s + ((v.option_id >= 0 && v.option_id < opts.length) ? parseInt(v.cnt) : 0), 0);
   const countMap = {};
   votes.forEach(v => { countMap[v.option_id] = parseInt(v.cnt); });
 
@@ -336,7 +338,7 @@ async function endPoll(telegram, pollId) {
 
   const opts = _parseOpts(poll.options);
   const votes = await all('SELECT option_id, COUNT(*) as cnt FROM poll_votes WHERE poll_id=$1 GROUP BY option_id', [pollId]).catch(() => []);
-  const total = votes.reduce((s, v) => s + parseInt(v.cnt), 0);
+  const total = votes.reduce((s, v) => s + ((v.option_id >= 0 && v.option_id < opts.length) ? parseInt(v.cnt) : 0), 0);
   const countMap = {};
   votes.forEach(v => { countMap[v.option_id] = parseInt(v.cnt); });
 
