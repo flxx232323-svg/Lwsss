@@ -472,6 +472,7 @@ require('./handlers/ingest_panel').register(bot); // 📥 أزرار اختيا�
 require('./handlers/ingest_review').register(bot); // 📋 مركز مراجعة الملفات — Owner فقط
 require('./utils/ingest_senders').useTelegram(bot.telegram); // 👮 مشرفو القروبات لتتبع الملفات
 require('./handlers/ingest_probe').register(bot); // 🧪 فحص تحويل file_id — Owner فقط
+require('./handlers/ingest_auto').register(bot); // 🧠⚡ تصنيف ذكي + حفظ تلقائي (اختياري لكل موضوع)
 require('./handlers/ingest_save').register(bot); // 💾 حفظ الملفات الموافق عليها — Owner فقط
 
 // 🐺 لوب غارو trigger

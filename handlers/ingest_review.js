@@ -89,6 +89,10 @@ const RX = {
   batchReject: /^inr_br_(\d{1,9})_(\d{1,12})$/,
   batchRejectOk: /^inr_bx_(\d{1,9})_(\d{1,12})$/,
   itemPreview: /^inr_ip_(\d{1,19})$/,
+  smartToggle: /^inr_sm_(\d{1,9})_(\d{1,12})$/,
+  autoConfirm: /^inr_ac_(\d{1,9})_(\d{1,12})$/,
+  autoOn: /^inr_ao_(\d{1,9})_(\d{1,12})$/,
+  autoOff: /^inr_af_(\d{1,9})_(\d{1,12})$/,
   batchApprove: /^inr_ba_(\d{1,9})_(\d{1,12})$/,
   pick: /^inr_pk_([bi][\d.]{1,35})_([symuc])_(\d{1,9})$/,
   pickDone: /^inr_pc_([bi][\d.]{1,35})_(\d{1,9})$/,
@@ -112,6 +116,10 @@ function parseCb(data) {
   if ((m = RX.batchReject.exec(data))) return { a: 'batchReject', sid: m[1], tp: m[2] };
   if ((m = RX.batchRejectOk.exec(data))) return { a: 'batchRejectOk', sid: m[1], tp: m[2] };
   if ((m = RX.itemPreview.exec(data))) return { a: 'itemPreview', id: m[1] };
+  if ((m = RX.smartToggle.exec(data))) return { a: 'smartToggle', sid: m[1], tp: m[2] };
+  if ((m = RX.autoConfirm.exec(data))) return { a: 'autoConfirm', sid: m[1], tp: m[2] };
+  if ((m = RX.autoOn.exec(data))) return { a: 'autoOn', sid: m[1], tp: m[2] };
+  if ((m = RX.autoOff.exec(data))) return { a: 'autoOff', sid: m[1], tp: m[2] };
   if ((m = RX.batchApprove.exec(data))) return { a: 'batchApprove', sid: m[1], tp: m[2] };
   if ((m = RX.pick.exec(data))) { const t = parseTarget(m[1]); return t ? { a: 'pick', t, T: m[1], lvl: m[2], parent: m[3] } : null; }
   if ((m = RX.pickDone.exec(data))) { const t = parseTarget(m[1]); return t ? { a: 'pickDone', t, T: m[1], cat: m[2] } : null; }
@@ -148,7 +156,25 @@ function buildQueueView({ counts, batches }) {
   return { text: lines.join('\n'), rows };
 }
 
-function buildBatchView({ sid, tp, title, topicName, pathText, items, page, total, noPath }) {
+function buildAutoConfirmView({ sid, tp, title, topicName, pathText }) {
+  const lines = [
+    '⚡ تفعيل الحفظ التلقائي لهذا الموضوع؟', '',
+    '«' + (short(title, 30) || 'قروب') + '» · ' + topicLabel(tp, topicName),
+    'المسار: ' + (pathText || '⚠️ غير محدد'), '',
+    'عند التفعيل: الملف الذي يتعرّف البوت على قسمه بوضوح من اسمه (كورس / TD / TP / امتحان)،',
+    'والحديث (آخر 24 ساعة افتراضياً)، وغير المكرر، يُحفظ مباشرة في مكتبة الطلاب دون مراجعتك.',
+    'غير الواضح أو المكرر أو القديم يبقى للمراجعة.',
+    '⚠️ يشمل أيضاً الملفات المنتظرة الآن إن كانت حديثة وواضحة.',
+    'يمكنك التراجع عن أي ملف من لوحة Bot User.',
+  ];
+  const rows = [
+    [kbBtn('✅ نعم، فعّل الحفظ التلقائي', 'inr_ao_' + sid + '_' + tp)],
+    [kbBtn('↩️ إلغاء', 'inr_b_' + sid + '_' + tp)],
+  ];
+  return { text: lines.join('\n'), rows };
+}
+
+function buildBatchView({ sid, tp, title, topicName, pathText, smart, auto, items, page, total, noPath }) {
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const lines = [
     `📂 «${short(title, 30) || 'قروب'}» · ${topicLabel(tp, topicName)}`,
@@ -164,6 +190,10 @@ function buildBatchView({ sid, tp, title, topicName, pathText, items, page, tota
   if (page + 1 < pages) nav.push(kbBtn('➡️', `inr_b_${sid}_${tp}_${page + 1}`));
   if (nav.length) rows.push(nav);
   rows.push([kbBtn('📂 تحديد مسار الموضوع', `inr_pk_b${sid}.${tp}_s_0`)]);
+  lines.push('التصنيف الذكي: ' + (smart ? 'مفعّل 🧠' : 'متوقف') + (smart ? ' · الحفظ التلقائي: ' + (auto ? 'مفعّل ⚡' : 'متوقف') : ''));
+  rows.push(smart
+    ? [kbBtn('🧠 ذكي: ✅', 'inr_sm_' + sid + '_' + tp), auto ? kbBtn('⚡ تلقائي: ✅ (إيقاف)', 'inr_af_' + sid + '_' + tp) : kbBtn('⚡ تلقائي: ⬜', 'inr_ac_' + sid + '_' + tp)]
+    : [kbBtn('🧠 تصنيف ذكي: ⬜', 'inr_sm_' + sid + '_' + tp)]);
   rows.push([kbBtn(`✅ موافقة على الكل (${total - noPath})`, `inr_ba_${sid}_${tp}`)]);
   rows.push([kbBtn(`❌ رفض الكل (${total})`, `inr_br_${sid}_${tp}`)]);
   rows.push([kbBtn('◀️ رجوع', 'inr_q')]);
@@ -260,7 +290,7 @@ async function loadBatch(pg, sid, tp, page) {
   const topicName = tp === '0' ? null : ((await pg.query(
     `SELECT name FROM group_known_topics WHERE chat_id = $1 AND thread_id = $2::bigint`, [src.chat_id, tp])).rows[0] || {}).name || null;
   const rule = (await pg.query(
-    `SELECT category_id FROM ingest_rules WHERE source_id = $1 AND COALESCE(topic_id, 0) = $2::bigint`, [sid, tp])).rows[0];
+    `SELECT category_id, smart, auto_save FROM ingest_rules WHERE source_id = $1 AND COALESCE(topic_id, 0) = $2::bigint`, [sid, tp])).rows[0];
   const cond = `i.source_id = $1 AND COALESCE(i.topic_id, 0) = $2::bigint AND i.state IN (${P})`;
   const stats = (await pg.query(
     `SELECT count(*)::int AS total,
@@ -271,7 +301,7 @@ async function loadBatch(pg, sid, tp, page) {
             i.suggested_category_id AS own_cat, r.category_id AS rule_cat
        FROM ingest_items i ${RULE_JOIN} WHERE ${cond}
       ORDER BY i.message_date DESC NULLS LAST, i.id DESC LIMIT ${PAGE} OFFSET $3`, [sid, tp, page * PAGE])).rows;
-  return { src, topicName, rulePath: await pathText(pg, rule && rule.category_id), items, total: stats.total, noPath: stats.no_path };
+  return { src, topicName, rulePath: await pathText(pg, rule && rule.category_id), smart: !!(rule && Number(rule.smart) === 1), auto: !!(rule && Number(rule.auto_save) === 1), items, total: stats.total, noPath: stats.no_path };
 }
 
 // المرسل للعرض: المالك = «أنت»، وغيره = مشرف (يُسجَّل غير المالك فقط عند تفعيل تتبع المشرفين)
@@ -431,7 +461,7 @@ async function batchScreen(pg, sid, tp, page) {
   if (b.total === 0) return queueView(pg); // الدفعة فرغت: ارجع للقائمة
   const maxPage = Math.max(0, Math.ceil(b.total / PAGE) - 1);
   if (page > maxPage) return batchScreen(pg, sid, tp, maxPage);
-  return buildBatchView({ sid, tp, title: b.src.title, topicName: b.topicName, pathText: b.rulePath, items: b.items, page, total: b.total, noPath: b.noPath });
+  return buildBatchView({ sid, tp, title: b.src.title, topicName: b.topicName, pathText: b.rulePath, smart: b.smart, auto: b.auto, items: b.items, page, total: b.total, noPath: b.noPath });
 }
 
 async function handle(ctx, data, deps = {}) {
@@ -503,6 +533,43 @@ async function handle(ctx, data, deps = {}) {
       await ctx.telegram.forwardMessage(ownerId, v.item.chat_id, Number(v.item.source_message_id));
     } catch (e) { return ack(previewErrText(e), true); }
     return ack('👁 أُرسل الملف إلى محادثتك');
+  }
+
+  if (cb.a === 'smartToggle') {
+    const rule = (await pg.query("SELECT category_id, smart FROM ingest_rules WHERE source_id = $1 AND COALESCE(topic_id, 0) = $2::bigint ORDER BY id LIMIT 1", [cb.sid, cb.tp])).rows[0];
+    if (!rule) return ack('⚠️ الموضوع غير مراقَب.', true);
+    const on = Number(rule.smart) === 1;
+    if (!on && !rule.category_id) return ack('حدّد مسار الموضوع أولاً (📂)، فالمادة تُؤخذ منه.', true);
+    await pg.query("UPDATE ingest_rules SET smart = $3::smallint, auto_save = CASE WHEN $3::smallint = 0 THEN 0 ELSE auto_save END, updated_at = NOW() WHERE source_id = $1 AND COALESCE(topic_id, 0) = $2::bigint", [cb.sid, cb.tp, on ? 0 : 1]);
+    await pg.query("INSERT INTO ingest_events (actor_kind, actor_id, event, source_id, detail) VALUES ('owner', $1, $2, $3, $4)", [ownerId, on ? 'smart_off' : 'smart_on', cb.sid, JSON.stringify({ topic: String(cb.tp) })]);
+    await ack(on ? '🧠 أُوقف التصنيف الذكي (والحفظ التلقائي)' : '🧠 فُعّل التصنيف الذكي: تُصنَّف الملفات الجديدة بالاسم');
+    const v = await batchScreen(pg, cb.sid, cb.tp, 0);
+    return v ? render(ctx, v) : null;
+  }
+
+  if (cb.a === 'autoConfirm') {
+    const b = await loadBatch(pg, cb.sid, cb.tp, 0);
+    if (!b) return ack('⚠️ المصدر غير موجود.', true);
+    if (!b.smart) return ack('فعّل التصنيف الذكي أولاً.', true);
+    await ack();
+    return render(ctx, buildAutoConfirmView({ sid: cb.sid, tp: cb.tp, title: b.src.title, topicName: b.topicName, pathText: b.rulePath }));
+  }
+
+  if (cb.a === 'autoOn') {
+    const u = await pg.query("UPDATE ingest_rules SET auto_save = 1, updated_at = NOW() WHERE source_id = $1 AND COALESCE(topic_id, 0) = $2::bigint AND smart = 1 AND category_id IS NOT NULL RETURNING id", [cb.sid, cb.tp]);
+    if (!u.rowCount) return ack('⚠️ لا يمكن التفعيل: فعّل الذكي وحدّد المسار أولاً.', true);
+    await pg.query("INSERT INTO ingest_events (actor_kind, actor_id, event, source_id, detail) VALUES ('owner', $1, 'auto_on', $2, $3)", [ownerId, cb.sid, JSON.stringify({ topic: String(cb.tp) })]);
+    await ack('⚡ فُعّل الحفظ التلقائي لهذا الموضوع');
+    const v = await batchScreen(pg, cb.sid, cb.tp, 0);
+    return v ? render(ctx, v) : null;
+  }
+
+  if (cb.a === 'autoOff') {
+    await pg.query("UPDATE ingest_rules SET auto_save = 0, updated_at = NOW() WHERE source_id = $1 AND COALESCE(topic_id, 0) = $2::bigint", [cb.sid, cb.tp]);
+    await pg.query("INSERT INTO ingest_events (actor_kind, actor_id, event, source_id, detail) VALUES ('owner', $1, 'auto_off', $2, $3)", [ownerId, cb.sid, JSON.stringify({ topic: String(cb.tp) })]);
+    await ack('⚡ أُوقف الحفظ التلقائي');
+    const v = await batchScreen(pg, cb.sid, cb.tp, 0);
+    return v ? render(ctx, v) : null;
   }
 
   if (cb.a === 'pick') {

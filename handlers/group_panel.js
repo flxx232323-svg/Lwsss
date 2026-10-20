@@ -359,6 +359,8 @@ async function handleCallback(ctx, data) {
   if (data === 'gp_defaults') return showDefaultSettings(ctx);
   if (data === 'gp_botuser') return showBotUserPanel(ctx);
   if (data === 'gp_botuser_failed') return showBotUserFailed(ctx);
+  if (data === 'gp_botuser_undo') return showBotUserUndo(ctx);
+  if (data.startsWith('gp_botuser_undo_')) return undoBotUser(ctx, data);
   if (data.startsWith('gp_botuser_retry_')) return retryBotUser(ctx, data);
   if (data === 'gp_def_setmsg' || data === 'gp_def_setphoto' || data === 'gp_def_reset') return handleDefaultCallback(ctx, data);
 
@@ -892,7 +894,7 @@ const _clipT = (t, n) => Array.from(String(t == null ? '' : t).replace(/[\u0000-
 
 async function _botUserStats() {
   const q1 = (sql) => get(sql, []).catch(() => null);
-  const [src, items, saved, errs] = await Promise.all([
+  const [src, items, saved, errs, auto24] = await Promise.all([
     q1("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END), 0) AS en FROM ingest_sources"),
     q1("SELECT " +
        "COALESCE(SUM(CASE WHEN state IN ('discovered','classified','needs_path','needs_review','in_batch','pending_approval') THEN 1 ELSE 0 END), 0) AS pending, " +
@@ -905,8 +907,9 @@ async function _botUserStats() {
         "JOIN LATERAL (SELECT ts, detail FROM ingest_events WHERE source_id = s.id AND event = 'source_error' ORDER BY ts DESC LIMIT 1) e ON TRUE " +
         "LEFT JOIN ingest_watermarks w ON w.source_id = s.id " +
         "WHERE s.enabled = 1 AND (w.updated_at IS NULL OR e.ts > w.updated_at) ORDER BY e.ts DESC LIMIT 3", []).catch(() => []),
+    q1("SELECT COUNT(*) AS n FROM ingest_events WHERE event = 'item_auto_approved' AND ts >= NOW() - INTERVAL '24 hours'"),
   ]);
-  return { src, items, saved, errs };
+  return { src, items, saved, errs, auto24 };
 }
 
 async function showBotUserPanel(ctx) {
@@ -921,6 +924,7 @@ async function showBotUserPanel(ctx) {
   const pending = num(st.items, 'pending'), saving = num(st.items, 'saving');
   const retrying = num(st.items, 'retrying'), failed = num(st.items, 'failed');
   const saved = num(st.saved, 'n');
+  const auto24 = num(st.auto24, 'n');
 
   const lines = ['🤖 Bot User', '━━━━━━━━━━━━━━━━━━', ''];
   lines.push(ub.online
@@ -933,6 +937,7 @@ async function showBotUserPanel(ctx) {
   lines.push('💾 قيد الحفظ: ' + fmt(saving));
   if (retrying) lines.push('🔁 تُعاد تلقائياً: ' + retrying);
   lines.push('✅ حُفظ في آخر 24 ساعة: ' + fmt(saved));
+  if (auto24) lines.push('⚡ منها اعتُمد تلقائياً: ' + auto24);
   lines.push('⚠️ فشل الحفظ: ' + fmt(failed));
 
   const now = Date.now();
@@ -951,9 +956,55 @@ async function showBotUserPanel(ctx) {
   lines.push('', '🕒 آخر تحديث: ' + hhmm);
 
   const rows = [[kbBtn('📥 مراقبة الملفات', 'ing_list'), kbBtn('📋 مراجعة الملفات' + (pending ? ' (' + pending + ')' : ''), 'inr_q')]];
+  if (auto24) rows.push([kbBtn('↩️ تراجع عن التلقائي (' + auto24 + ')', 'gp_botuser_undo')]);
   if (failed) rows.push([kbBtn('⚠️ فشل الحفظ (' + failed + ')', 'gp_botuser_failed')]);
   rows.push([kbBtn('🔄 تحديث', 'gp_botuser'), kbBtn('◀️ رجوع', 'grp_main')]);
   return eos(ctx, lines.join('\n'), kbBuild(rows));
+}
+
+async function showBotUserUndo(ctx) {
+  const uid = ctx.uid || ctx.from?.id;
+  if (String(uid) !== String(process.env.OWNER_ID)) return ctx.answerCbQuery('🚫').catch(() => {});
+  const list = await all(
+    "SELECT i.id, i.file_name, su.name AS subject, c.name AS section FROM ingest_items i " +
+    "JOIN files f ON f.id = i.library_file_id AND f.is_deleted = 0 " +
+    "JOIN categories c ON c.id = f.category_id " +
+    "JOIN subjects su ON su.id = c.subject_id " +
+    "WHERE i.save_state = 'done' " +
+    "AND EXISTS (SELECT 1 FROM ingest_events e WHERE e.item_id = i.id AND e.event = 'item_auto_approved') " +
+    "ORDER BY i.updated_at DESC LIMIT 10", []).catch(() => null);
+  const lines = ['↩️ تراجع عن الحفظ التلقائي', '━━━━━━━━━━━━━━━━━━', ''];
+  if (list === null) lines.push('تعذّر قراءة البيانات الآن.');
+  else if (!list.length) lines.push('لا توجد ملفات محفوظة تلقائياً يمكن التراجع عنها.');
+  else {
+    list.forEach((r) => {
+      lines.push('#' + r.id + ' «' + _clipT(r.file_name || 'ملف', 40) + '»');
+      lines.push('   → ' + _clipT(r.subject, 20) + ' › ' + _clipT(r.section, 16));
+    });
+    lines.push('', 'اضغط ↩️ لإخفاء الملف من المكتبة (يبقى في سلة المحذوفات ويمكن استعادته).');
+  }
+  const rows = [];
+  if (list && list.length) {
+    for (let i = 0; i < list.length; i += 4) rows.push(list.slice(i, i + 4).map((r) => kbBtn('↩️ #' + r.id, 'gp_botuser_undo_' + r.id)));
+  }
+  rows.push([kbBtn('🔄 تحديث', 'gp_botuser_undo'), kbBtn('◀️ رجوع', 'gp_botuser')]);
+  return eos(ctx, lines.join('\n'), kbBuild(rows));
+}
+
+async function undoBotUser(ctx, data) {
+  const uid = ctx.uid || ctx.from?.id;
+  if (String(uid) !== String(process.env.OWNER_ID)) return ctx.answerCbQuery('🚫').catch(() => {});
+  const arg = String(data).slice('gp_botuser_undo_'.length);
+  if (!/^\d{1,19}$/.test(arg)) return ctx.answerCbQuery('❌ بيانات غير صالحة.').catch(() => {});
+  const it = await get(
+    "SELECT i.id, i.library_file_id FROM ingest_items i WHERE i.id = $1 AND i.save_state = 'done' AND i.library_file_id IS NOT NULL " +
+    "AND EXISTS (SELECT 1 FROM ingest_events e WHERE e.item_id = i.id AND e.event = 'item_auto_approved')", [arg]).catch(() => null);
+  if (!it) return ctx.answerCbQuery('⚠️ غير متاح للتراجع.', { show_alert: true }).catch(() => {});
+  try { await require('../database/files').softDelete(it.library_file_id); }
+  catch (_) { return ctx.answerCbQuery('⚠️ تعذّر التراجع.', { show_alert: true }).catch(() => {}); }
+  await run("INSERT INTO ingest_events (actor_kind, actor_id, event, source_id, item_id, detail) SELECT 'owner', $1::bigint, 'item_auto_undone', source_id, id, '{}' FROM ingest_items WHERE id = $2", [uid, it.id]).catch(() => {});
+  await ctx.answerCbQuery('↩️ أُخفي الملف من المكتبة').catch(() => {});
+  return showBotUserUndo(ctx);
 }
 
 async function showBotUserFailed(ctx) {

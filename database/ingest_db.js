@@ -160,6 +160,8 @@ function buildStatements() {
     // المرحلة 2: تاريخ الرسالة والتعليق (للمراجعة والتصنيف لاحقاً؛ الرسائل قد تُحذف) — للجداول المُنشأة في المرحلة 1
     `ALTER TABLE ingest_items ADD COLUMN IF NOT EXISTS message_date TIMESTAMPTZ`,
     `ALTER TABLE ingest_items ADD COLUMN IF NOT EXISTS caption TEXT`,
+    `ALTER TABLE ingest_rules ADD COLUMN IF NOT EXISTS smart SMALLINT NOT NULL DEFAULT 0 CHECK (smart IN (0,1))`,
+    `ALTER TABLE ingest_rules ADD COLUMN IF NOT EXISTS auto_save SMALLINT NOT NULL DEFAULT 0 CHECK (auto_save IN (0,1))`,
     `CREATE INDEX IF NOT EXISTS idx_ingest_items_state  ON ingest_items(state)`,
     `CREATE INDEX IF NOT EXISTS idx_ingest_items_batch  ON ingest_items(batch_id) WHERE batch_id IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_ingest_items_sha256 ON ingest_items(sha256) WHERE sha256 IS NOT NULL`,
