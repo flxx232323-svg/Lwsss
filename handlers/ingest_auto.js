@@ -83,7 +83,7 @@ function createAuto(d) {
         if (!pick.ok) {
           const u = await pg.query(
             "UPDATE ingest_items SET state = 'needs_review', updated_at = NOW() WHERE id = $1 AND state = 'discovered' AND suggested_category_id IS NULL", [it.id]);
-          if (u.rowCount) { stats.review++; await writeEvent(pg, 'item_auto_skipped', it, { reason: pick.reason }); }
+          if (u.rowCount) { stats.review++; await writeEvent(pg, 'item_auto_skipped', it, { reason: pick.reason, kind: pick.kind, sections: ch.map((c) => String(c.name).slice(0, 30)) }); }
           continue;
         }
 

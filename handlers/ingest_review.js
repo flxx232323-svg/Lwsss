@@ -32,6 +32,31 @@ const P = PENDING.map((s) => `'${s}'`).join(',');
 const PAGE = 8;
 const PICK_MAX = 30;
 
+// ── شفافية التصنيف الذكي: لماذا صُنِّف الملف أو لم يُصنَّف ──
+const SMART_WHY = {
+  auto_off: 'الحفظ التلقائي متوقف',
+  stage_not_production: 'مرحلة الحفظ ليست production',
+  owner_missing: 'OWNER_ID غير صالح',
+  too_old: 'الملف أقدم من حدّ الاعتماد التلقائي (24 ساعة)',
+  duplicate_title: 'عنوان مكرر في القسم',
+  duplicate_file: 'الملف نفسه محفوظ سابقاً',
+};
+const KIND_AR = { course: 'كورس', td: 'TD', tp: 'TP', exam: 'امتحان' };
+function smartNote(ev, item, smartOn) {
+  if (!ev) return smartOn && item.state === 'discovered' ? '🧠 لم يُفحص بعد (يُفحص خلال نحو دقيقة).' : null;
+  let d = {};
+  try { d = JSON.parse(ev.detail) || {}; } catch (_) { d = {}; }
+  const kind = KIND_AR[d.kind] || '';
+  if (ev.event === 'item_auto_approved') return '🧠⚡ اعتُمد تلقائياً (' + kind + ')';
+  if (ev.event === 'item_auto_classified') return '🧠 صُنِّف كـ«' + kind + '» ولم يُحفظ تلقائياً: ' + (SMART_WHY[d.why_not_auto] || d.why_not_auto || '—');
+  const secs = Array.isArray(d.sections) && d.sections.length ? ' — أقسام المادة: ' + d.sections.slice(0, 8).join('، ') : '';
+  if (d.reason === 'no_kind') return '🧠 لم يُصنَّف: لا يوجد في الاسم ما يدل على النوع (كورس / TD / TP / امتحان).';
+  if (d.reason === 'ambiguous_kind') return '🧠 لم يُصنَّف: الاسم يحمل أكثر من نوع.';
+  if (d.reason === 'no_section') return '🧠 لم يُصنَّف: نوع الملف «' + kind + '» ولا يوجد قسم مطابق له في المادة' + secs + '.';
+  if (d.reason === 'ambiguous_section') return '🧠 لم يُصنَّف: في المادة أكثر من قسم من نوع «' + kind + '»' + secs + '.';
+  return '🧠 لم يُصنَّف.';
+}
+
 // ── المرحلة 3: أدوات المراجعة السريعة ──
 const PREVIEW_ERR = {
   protected: 'القروب يمنع إعادة التوجيه (حماية المحتوى).',
@@ -183,7 +208,7 @@ function buildBatchView({ sid, tp, title, topicName, pathText, smart, auto, item
     `الملفات: ${total}${noPath > 0 ? ` (منها ${noPath} بلا مسار)` : ''}${pages > 1 ? ` · صفحة ${page + 1}/${pages}` : ''}`,
   ];
   const rows = items.map((it) => [kbBtn(
-    `${(it.own_cat || it.rule_cat) ? '📄' : '⚠️'} ${itemLabel(it)}${fmtSize(it.size) ? ' · ' + fmtSize(it.size) : ''}`.slice(0, 60),
+    `${(it.own_cat || it.rule_cat) ? '📄' : '⚠️'} ${itemLabel(it)}${fmtSize(it.size) ? ' · ' + fmtSize(it.size) : ''}`.slice(0, 46) + (it.sugg ? ' → ' + short(it.sugg, 10) : (smart ? ' → ❓' : '')),
     `inr_i_${it.id}`)]);
   const nav = [];
   if (page > 0) nav.push(kbBtn('⬅️', `inr_b_${sid}_${tp}_${page - 1}`));
@@ -200,7 +225,7 @@ function buildBatchView({ sid, tp, title, topicName, pathText, smart, auto, item
   return { text: lines.join('\n'), rows };
 }
 
-function buildItemView({ item, srcTitle, topicName, pathText, ownPath, dupCount, senderLabel }) {
+function buildItemView({ item, srcTitle, topicName, pathText, ownPath, dupCount, senderLabel, smartNote }) {
   const lines = [
     `📄 ${itemLabel(item)}`,
     '',
@@ -211,6 +236,7 @@ function buildItemView({ item, srcTitle, topicName, pathText, ownPath, dupCount,
   if (item.message_date) lines.push(`التاريخ: ${algTime(item.message_date)}`);
   if (item.caption) lines.push(`التعليق: ${short(item.caption, 120)}`);
   lines.push(`المسار: ${pathText || '⚠️ غير محدد'}${pathText && ownPath ? ' (خاص بهذا الملف)' : ''}`);
+  if (smartNote) lines.push(smartNote);
   if (dupCount > 0) lines.push(`⚠️ ملف مشابه (نفس الاسم والحجم) مسجَّل ${dupCount} مرة سابقاً.`);
   lines.push(`الحالة: ${PENDING.includes(item.state) ? 'بانتظار المراجعة' : item.state}`);
   const rows = [];
@@ -298,7 +324,7 @@ async function loadBatch(pg, sid, tp, page) {
        FROM ingest_items i ${RULE_JOIN} WHERE ${cond}`, [sid, tp])).rows[0];
   const items = (await pg.query(
     `SELECT i.id, i.source_message_id::text AS source_message_id, i.file_name, i.caption, i.size_bytes::text AS size,
-            i.suggested_category_id AS own_cat, r.category_id AS rule_cat
+            i.suggested_category_id AS own_cat, r.category_id AS rule_cat, (SELECT name FROM categories WHERE id = i.suggested_category_id) AS sugg
        FROM ingest_items i ${RULE_JOIN} WHERE ${cond}
       ORDER BY i.message_date DESC NULLS LAST, i.id DESC LIMIT ${PAGE} OFFSET $3`, [sid, tp, page * PAGE])).rows;
   return { src, topicName, rulePath: await pathText(pg, rule && rule.category_id), smart: !!(rule && Number(rule.smart) === 1), auto: !!(rule && Number(rule.auto_save) === 1), items, total: stats.total, noPath: stats.no_path };
@@ -314,7 +340,7 @@ async function loadItem(pg, id) {
   const r = await pg.query(
     `SELECT i.id, i.source_id, COALESCE(i.topic_id, 0)::text AS tp, i.source_message_id::text AS source_message_id,
             i.file_name, i.caption, i.size_bytes::text AS size, i.mime_type, i.message_date, i.state,
-            i.suggested_category_id AS own_cat, r.category_id AS rule_cat, s.title AS src_title, s.chat_id,
+            i.suggested_category_id AS own_cat, r.category_id AS rule_cat, r.smart AS rule_smart, s.title AS src_title, s.chat_id,
             i.sender_id::text AS sender_id
        FROM ingest_items i ${RULE_JOIN} JOIN ingest_sources s ON s.id = i.source_id WHERE i.id = $1`, [id]);
   const it = r.rows[0];
@@ -324,8 +350,10 @@ async function loadItem(pg, id) {
   const dup = (await pg.query(
     `SELECT count(*)::int AS n FROM ingest_items WHERE id <> $1 AND file_name = $2 AND size_bytes IS NOT DISTINCT FROM $3::bigint AND $2 <> ''`,
     [it.id, it.file_name, it.size])).rows[0].n;
+  const ev = (await pg.query("SELECT event, detail FROM ingest_events WHERE item_id = $1 AND event IN ('item_auto_approved','item_auto_classified','item_auto_skipped') ORDER BY ts DESC LIMIT 1", [it.id])).rows[0];
+  const note = smartNote(ev, it, Number(it.rule_smart) === 1);
   const eff = it.own_cat || it.rule_cat;
-  return { item: it, srcTitle: it.src_title, topicName, pathText: await pathText(pg, eff), ownPath: !!it.own_cat, dupCount: dup, senderLabel: senderLabelOf(it.sender_id) };
+  return { item: it, srcTitle: it.src_title, topicName, pathText: await pathText(pg, eff), ownPath: !!it.own_cat, dupCount: dup, senderLabel: senderLabelOf(it.sender_id), smartNote: note };
 }
 
 // مستويات المنتقي: [جدول الأبناء، عمود الأب، جدول الأب لحساب "المستوى السابق"]

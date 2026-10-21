@@ -6,11 +6,11 @@
  */
 
 const KIND_WORDS = {
-  course: ['cours', 'course', 'courses', 'lecture', 'lectures', 'lec', 'chapitre', 'chapitres', 'chapter', 'chapters', 'chap',
+  course: ['cours', 'course', 'courses', 'lecture', 'lectures', 'lec', 'chapitre', 'chapitres', 'chapter', 'chapters', 'chap', 'lesson', 'lessons',
     'محاضره', 'محاضرات', 'كورس', 'كور', 'درس', 'دروس'],
-  td: ['td', 'tds', 'serie', 'series', 'exercice', 'exercices', 'exercise', 'exercises', 'exo', 'exos',
+  td: ['td', 'tds', 'serie', 'series', 'exercice', 'exercices', 'exercise', 'exercises', 'exo', 'exos', 'tutorial', 'tutorials', 'assignment', 'assignments', 'homework', 'worksheet', 'worksheets',
     'تمرين', 'تمارين', 'سلسله', 'سلاسل'],
-  tp: ['tp', 'tps', 'lab', 'labs', 'مخبر'],
+  tp: ['tp', 'tps', 'lab', 'labs', 'practical', 'practicals', 'مخبر'],
   exam: ['exam', 'exams', 'examen', 'examens', 'ds', 'controle', 'rattrapage', 'partiel',
     'امتحان', 'امتحانات', 'اختبار', 'فرض'],
 };
