@@ -106,9 +106,21 @@ app.get('/', (_r, res) => res.send('OK'));
 // ── Bot ──
 const bot = new Telegraf(TOKEN, {
   handlerTimeout: 90000,
-  telegram: { apiRoot: process.env.TELEGRAM_API_ROOT || undefined },
+  telegram: { apiRoot: process.env.TELEGRAM_API_ROOT || undefined, webhookReply: false },
 });
-global.__bot = bot; // ✅ يُستخدم من routes/api.js وworkers وhandlers/xp.js للوصول للبوت خارج سياق ctx — كان غير معرَّف إطلاقاً
+global.__bot = bot;
+try {
+  const { Telegram } = require('telegraf');
+  const _orig = Telegram.prototype.callApi;
+  Telegram.prototype.callApi = async function (method, payload, opts) {
+    try { return await _orig.call(this, method, payload, opts); }
+    catch (e) {
+      if (!/not modified/i.test(e.message || '')) console.error('[TG-FAIL]', method, '-', e.message);
+      throw e;
+    }
+  };
+} catch (e) { console.error('[TG-FAIL patch skipped]', e.message); }
+ // ✅ يُستخدم من routes/api.js وworkers وhandlers/xp.js للوصول للبوت خارج سياق ctx — كان غير معرَّف إطلاقاً
 
 // ── Rate Limiter ──
 const _floodMap = new Map();
