@@ -283,7 +283,7 @@ module.exports.registerMessages = function(bot, deps) {
           try { await dbRun('INSERT INTO ' + table + '(' + cols.join(',') + ') VALUES ' + ph + ' ON CONFLICT DO NOTHING', vals); restored += rows.length; }
           catch(e) { errors++; logger.error('[Restore]', table, e.message); }
         }
-        require('../utils/cache').cacheClearAll();
+        try { require('../utils/cache').cacheClearAll(); } catch (e) { require('../utils/logger').debug('[restore-cache]', e.message); }
         if (msg) ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id).catch(() => {});
         const totalTables = Object.keys(backup.tables).length;
         ctx.reply(

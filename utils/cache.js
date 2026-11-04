@@ -149,8 +149,10 @@ async function cacheMGet(keys) {
 
 function clearAllSubCache() { for (const k of store.keys()) if (k.startsWith("sub_ok_")) store.delete(k); }
 
+function cacheClearAll() { store.clear(); }
+
 module.exports = { cacheMGet, clearAllSubCache,
-  cacheGet, cacheSet, cacheClear, cacheClearPrefix,
+  cacheGet, cacheSet, cacheClear, cacheClearPrefix, cacheClearAll,
   cacheGetAsync, cacheSetAsync,
   cacheWarmup, cacheStats, getCacheSize, getCacheKeys,
   cachePurgeExpired, TTL,
