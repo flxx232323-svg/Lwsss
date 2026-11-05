@@ -284,6 +284,7 @@ module.exports.registerMessages = function(bot, deps) {
           catch(e) { errors++; logger.error('[Restore]', table, e.message); }
         }
         try { require('../utils/cache').cacheClearAll(); } catch (e) { require('../utils/logger').debug('[restore-cache]', e.message); }
+        try { await require('../database/seq_resync').resyncSequences(); } catch (e) { logger.error('[Restore] sequence resync failed:', e.message); }
         if (msg) ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id).catch(() => {});
         const totalTables = Object.keys(backup.tables).length;
         ctx.reply(
