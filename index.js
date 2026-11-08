@@ -679,6 +679,8 @@ async function launch() {
 
     music.checkDependencies().catch(() => {}); // فحص yt-dlp/ffmpeg مبكراً — يظهر في اللوغز فوراً إن كانا مفقودين
 
+    require('./utils/command_menu').applyCommandMenus(bot.telegram).catch((e) => logger.error('[CommandMenu] ' + e.message)); // قائمة الأوامر داخل تيليجرام (COMMAND_MENU_SYNC=off للتعطيل)
+
     startScheduler(bot, [OWNER_ID]);
     GrpBuf.start();
     require('./handlers/group_verify').startVerifyWatcher(bot);
