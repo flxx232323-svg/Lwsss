@@ -17,12 +17,10 @@ const { build: kbBuild, btn: kbBtn } = require('../utils/keyboard');
 // ── مساعدات ──────────────────────────────────────────────
 function isGroup(ctx) { return ['group', 'supergroup'].includes(ctx.chat?.type); }
 
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: مالك البوت + أدمن البوت
+const groupAuth = require('../utils/group_auth');
 async function isTgAdmin(ctx) {
-  if (ctx.isOwner || ctx.isAdmin) return true;
-  try {
-    const member = await ctx.telegram.getChatMember(ctx.chat.id, ctx.from.id);
-    return ['administrator', 'creator'].includes(member?.status);
-  } catch (_) { return false; }
+  return groupAuth.isGroupAdmin(ctx, { bypass: groupAuth.BYPASS.STAFF });
 }
 
 async function canAccessPanel(ctx, chatId) {

@@ -217,14 +217,11 @@ async function showGroupsLeaderboard(ctx, opts = {}) {
 }
 
 // ✅ تحقق موحّد من صلاحية إدارة قروب مُعيّن (Owner أو أدمن حقيقي في *هذا* القروب بالذات)
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: مالك البوت فقط
+const groupAuth = require('../utils/group_auth');
 async function checkGroupAdmin(ctx, chatId) {
   const uid = Number(ctx.uid || ctx.from?.id);
-  const ownerId = Number(process.env.OWNER_ID);
-  if (uid === ownerId) return true;
-  try {
-    const member = await ctx.telegram.getChatMember(chatId, uid);
-    if (['administrator','creator'].includes(member?.status)) return true;
-  } catch (e) { /* fallthrough */ }
+  if (await groupAuth.isGroupAdmin(ctx, { chatId, userId: uid, bypass: groupAuth.BYPASS.OWNER })) return true;
   await ctx.answerCbQuery('🚫 ليس لديك صلاحية إدارة هذا القروب', { show_alert: true }).catch(() => {});
   return false;
 }

@@ -55,12 +55,10 @@ function tmp(ctx, text, secs = 8) {
     .then(m => { if (m) setTimeout(() => ctx.telegram.deleteMessage(ctx.chat.id, m.message_id).catch(() => {}), secs * 1000); })
     .catch(() => {});
 }
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: مالك البوت + أدمن البوت
+const groupAuth = require('../utils/group_auth');
 async function isTgAdmin(ctx) {
-  if (ctx.isOwner || ctx.isAdmin) return true;
-  try {
-    const m = await ctx.telegram.getChatMember(ctx.chat.id, ctx.from.id);
-    return ['administrator','creator'].includes(m?.status);
-  } catch(_) { return false; }
+  return groupAuth.isGroupAdmin(ctx, { bypass: groupAuth.BYPASS.STAFF });
 }
 async function getTarget(ctx) {
   const rep = ctx.message?.reply_to_message?.from;

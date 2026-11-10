@@ -16,12 +16,10 @@ const logger = require('../utils/logger');
 
 // ✅ يتحقق من صلاحية المستخدم فـ القروب المستهدف بالذات (chatId)،
 //    وليس فـ ctx.chat.id (اللي يكون المحادثة الخاصة عند الدخول من لوحة الإدارة عن بعد)
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: مالك البوت + أدمن البوت
+const groupAuth = require('../utils/group_auth');
 async function isTgAdmin(ctx, chatId) {
-  if (ctx.isOwner || ctx.isAdmin) return true;
-  try {
-    const member = await ctx.telegram.getChatMember(chatId, ctx.from.id);
-    return ['administrator', 'creator'].includes(member?.status);
-  } catch { return false; }
+  return groupAuth.isGroupAdmin(ctx, { chatId, bypass: groupAuth.BYPASS.STAFF });
 }
 
 const PAGE_SIZE = 8;

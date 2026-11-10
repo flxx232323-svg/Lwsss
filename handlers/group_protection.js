@@ -68,20 +68,12 @@ function clearWordsCache(chatId) { cacheClear('bwords_' + chatId); }
 // ══════════════════════════════════════════════════════════
 // 👮 هل المستخدم مشرف تيليجرام في هذا القروب؟ (مع كاش)
 // ══════════════════════════════════════════════════════════
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: مالك البوت فقط
+const groupAuth = require('../utils/group_auth');
 async function isTelegramAdmin(ctx, chatId, uid) {
-  if (parseInt(uid) === OWNER_ID) return true;
-  const ck = 'tgadm_' + chatId + '_' + uid;
-  let v = cacheGet(ck);
-  if (v !== null) return v;
-  let isAdm = false;
-  try {
-    const m = await ctx.telegram.getChatMember(chatId, uid);
-    isAdm = ['administrator', 'creator'].includes(m?.status);
-  } catch (_) {}
-  cacheSet(ck, isAdm, 300000);
-  return isAdm;
+  return groupAuth.isGroupAdmin(ctx, { chatId, userId: uid, bypass: groupAuth.BYPASS.OWNER, ttl: 300000 }); // 5 دقائق كالقديم
 }
-function clearAdminCache(chatId, uid) { cacheClear('tgadm_' + chatId + '_' + uid); }
+function clearAdminCache(chatId, uid) { groupAuth.invalidateGroupAdmin(chatId, uid); }
 
 // ══════════════════════════════════════════════════════════
 // 🧠 حالة مؤقتة في الذاكرة (Flood / Duplicate / Cross-Spam)

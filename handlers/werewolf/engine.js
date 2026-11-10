@@ -93,11 +93,10 @@ async function editLobby(game, text) {
   await BOT.telegram.editMessageText(game.chatId, game.lobbyMsgId, undefined, text, { parse_mode: 'Markdown' }).catch(() => {});
 }
 
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: لا تجاوز
+const groupAuth = require('../../utils/group_auth');
 async function isGroupAdmin(chatId, uid) {
-  try {
-    const m = await BOT.telegram.getChatMember(chatId, uid);
-    return m.status === 'creator' || m.status === 'administrator';
-  } catch (_) { return false; }
+  return groupAuth.isGroupAdminById(BOT && BOT.telegram, chatId, uid);
 }
 
 async function handleLobbyAction(ctx, game, parsed) {

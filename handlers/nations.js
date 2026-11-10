@@ -236,11 +236,10 @@ async function migrate() {
 // ══════════════════════════════════════════════════════════
 function fmt(n) { return Number(n || 0).toLocaleString('en-US'); }
 function isGroup(ctx) { return ['group', 'supergroup'].includes(ctx.chat?.type); }
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: لا تجاوز (حتى المالك يمرّ على تيليجرام)
+const groupAuth = require('../utils/group_auth');
 async function isAdmin(ctx) {
-  try {
-    const m = await ctx.telegram.getChatMember(ctx.chat.id, ctx.from.id);
-    return ['administrator', 'creator'].includes(m?.status);
-  } catch { return false; }
+  return groupAuth.isGroupAdmin(ctx, { bypass: groupAuth.BYPASS.NONE });
 }
 
 async function getNation(chatId) {

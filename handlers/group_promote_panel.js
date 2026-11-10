@@ -7,13 +7,10 @@
 
 function isGroup(ctx) { return ['group', 'supergroup'].includes(ctx.chat?.type); }
 
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: مالك البوت فقط
+const groupAuth = require('../utils/group_auth');
 async function isTgAdminOrOwner(ctx) {
-  const uid = ctx.from?.id;
-  if (Number(uid) === Number(process.env.OWNER_ID)) return true;
-  try {
-    const m = await ctx.telegram.getChatMember(ctx.chat.id, uid);
-    return ['administrator', 'creator'].includes(m?.status);
-  } catch (e) { return false; }
+  return groupAuth.isGroupAdmin(ctx, { bypass: groupAuth.BYPASS.OWNER });
 }
 
 // 🔑 كل صلاحيات promoteChatMember القابلة للتبديل (can_manage_chat أساس دائم)

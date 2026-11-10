@@ -29,19 +29,15 @@ function _tmp(ctx, txt, secs = 8) {
     .then(m => { if (m) setTimeout(() => ctx.telegram.deleteMessage(ctx.chat.id, m.message_id).catch(() => {}), secs * 1000); })
     .catch(() => {});
 }
+// ✅ المرحلة 2: الفحص موحَّد في utils/group_auth.js — سياسة التجاوز هنا: مالك البوت + أدمن البوت
+const groupAuth = require('../utils/group_auth');
 async function isTgAdmin(ctx, chatId, uid) {
-  if (ctx.isOwner || ctx.isAdmin) return true;
-  const cid = chatId || ctx.chat?.id;
-  const id  = uid || ctx.from?.id;
-  const ck = 'tgadm_' + cid + '_' + id;
-  let v = cacheGet(ck);
-  if (v !== null) return !!v;
-  try {
-    const m = await ctx.telegram.getChatMember(cid, id);
-    v = ['administrator', 'creator'].includes(m?.status);
-  } catch (_) { v = false; }
-  cacheSet(ck, v, 300000);
-  return v;
+  return groupAuth.isGroupAdmin(ctx, {
+    chatId: chatId || (ctx.chat && ctx.chat.id),
+    userId: uid || (ctx.from && ctx.from.id),
+    bypass: groupAuth.BYPASS.STAFF,
+    ttl: 300000, // نفس مدة الكاش القديمة (5 دقائق)
+  });
 }
 async function getTarget(ctx) {
   const rep = ctx.message?.reply_to_message?.from;
@@ -126,7 +122,7 @@ async function handleAdmins(ctx) {
 
     text += '\n📊 الإجمالي: *' + (others.length + (creator ? 1 : 0)) + '* مشرف';
 
-    cacheClear('tgadm_' + chatId + '_');
+    groupAuth.invalidateChat(chatId); // كان cacheClear('tgadm_<chat>_') بمفتاح حرفي فلا يمسح شيئاً
     await ctx.reply(text, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(() => {});
   } catch (e) {
     _tmp(ctx, '❌ فشل جلب قائمة المشرفين: ' + e.message, 5);

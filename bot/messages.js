@@ -620,6 +620,8 @@ module.exports.registerMessages = function(bot, deps) {
       const chat   = ctx.chatMember?.chat;
       const member = ctx.chatMember?.new_chat_member;
       const old    = ctx.chatMember?.old_chat_member;
+      // ✅ المرحلة 2: إبطال كاش «مشرف تيليجرام» فور أي تغيّر عضوية (قبل أي return تحت)
+      try { require('../utils/group_auth').handleChatMemberUpdate(ctx.chatMember); } catch (_) {}
       if (!chat || chat.type === "private") return;
       if (member?.user?.is_bot) {
         // ✅ نسجّل البوتات فـ group_members (is_bot=1) باش تظهر لأوامر كشف/طرد البوتات
