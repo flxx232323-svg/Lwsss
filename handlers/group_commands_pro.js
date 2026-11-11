@@ -144,7 +144,7 @@ function setupProCommands(bot) {
   bot.hears('الحماية', openPanel);
 
   // ── 📜 المساعدة ──
-  const showHelp = ctx => ctx.reply(HELP_TEXT, { parse_mode: 'Markdown' }).catch(() => {});
+  const showHelp = ctx => require('./group_pro_features').showProHelp(ctx); // ✅ المرحلة 3
   bot.command('prohelp', showHelp);
   bot.hears('مساعدة الحماية', showHelp);
 

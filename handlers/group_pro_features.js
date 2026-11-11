@@ -474,6 +474,22 @@ function buildHelpHomeKb() {
 function buildBackKb() {
   return { inline_keyboard: [[{ text: '◀️ رجوع', callback_data: 'help_home' }]] };
 }
+// ✅ المرحلة 3: مركز المساعدة الموحّد (utils/help_center.js) — يُبنى من السجل ويتكيّف مع الرتبة
+const helpCenter = require('../utils/help_center');
+async function _helpAudience(ctx) {
+  const chatType = ctx.chat?.type;
+  const isAdmin = chatType === 'private' ? false : await isTgAdmin(ctx).catch(() => false);
+  return helpCenter.audience({ chatType, isAdmin });
+}
+async function _helpSend(ctx, page) {
+  const extra = { parse_mode: page.parse_mode, reply_markup: page.reply_markup };
+  if (ctx.callbackQuery) {
+    await ctx.editMessageText(page.text, extra).catch(() => {});
+    await ctx.answerCbQuery().catch(() => {});
+  } else {
+    await ctx.reply(page.text, extra).catch(() => {});
+  }
+}
 async function showHelpHome(ctx) {
   // ✅ فالخاص: قائمة خاصة بالمستخدم العادي (بحث/ألعاب/بنك/AI)
   if (ctx.chat?.type === 'private') return showPrivateHelpHome(ctx);
@@ -489,26 +505,21 @@ async function showHelpHome(ctx) {
     }
   }
 
-  const txt = '🤖 *مركز المساعدة*\n━━━━━━━━━━━━━━━━\nاختر القسم:';
-  if (isCallback) {
-    await ctx.editMessageText(txt, { parse_mode: 'Markdown', reply_markup: buildHelpHomeKb() }).catch(() => {});
-    await ctx.answerCbQuery().catch(() => {});
-  } else {
-    if (['group','supergroup'].includes(ctx.chat?.type)) setTimeout(() => ctx.deleteMessage().catch(() => {}), 1000);
-    await ctx.reply(txt, { parse_mode: 'Markdown', reply_markup: buildHelpHomeKb() }).catch(() => {});
-  }
+  const page = helpCenter.buildHome(await _helpAudience(ctx));
+  if (!isCallback && ['group', 'supergroup'].includes(ctx.chat?.type)) setTimeout(() => ctx.deleteMessage().catch(() => {}), 1000);
+  return _helpSend(ctx, page);
 }
 async function showHelpSection(ctx, key) {
-  const sec = HELP_SECTIONS[key];
-  if (!sec) return;
-  await ctx.editMessageText(sec.text, { parse_mode: 'Markdown', reply_markup: buildBackKb() }).catch(() => {});
-  await ctx.answerCbQuery().catch(() => {});
+  const page = helpCenter.buildCategory(key, await _helpAudience(ctx));
+  if (!page) return ctx.answerCbQuery('🔒 هذا القسم للمشرفين فقط', { show_alert: true }).catch(() => {});
+  return _helpSend(ctx, page);
 }
 function handleHelpCallback(ctx, data) {
-  if (data.startsWith('phelp_')) return handlePrivateHelpCallback(ctx, data);
-  if (data === 'help_home') return showHelpHome(ctx);
-  const key = data.replace('help_', '');
-  if (HELP_SECTIONS[key]) return showHelpSection(ctx, key);
+  const cb = helpCenter.parseCallback(data);
+  if (!cb) return false;
+  if (cb.chat === 'private') return handlePrivateHelpCallback(ctx, data);
+  if (cb.action === 'home') return showHelpHome(ctx);
+  if (helpCenter.isCategory(cb.key)) return showHelpSection(ctx, cb.key);
   return false;
 }
 const CMDS_TEXT = Object.values(HELP_SECTIONS).map(s => s.text).join('\n\n');
@@ -551,26 +562,30 @@ function buildPrivateBackKb() {
   return { inline_keyboard: [[{ text: '◀️ رجوع', callback_data: 'phelp_home' }]] };
 }
 async function showPrivateHelpHome(ctx) {
-  const isCallback = !!ctx.callbackQuery;
-  const txt = '🤖 *مركز المساعدة*\n━━━━━━━━━━━━━━━━\nاختر القسم:\n\n💡 _إذا رغبت بأوامر إدارة قروب معين، اكتب اوامر داخل ذاك القروب مباشرة._';
-  if (isCallback) {
-    await ctx.editMessageText(txt, { parse_mode: 'Markdown', reply_markup: buildPrivateHelpHomeKb() }).catch(() => {});
-    await ctx.answerCbQuery().catch(() => {});
-  } else {
-    await ctx.reply(txt, { parse_mode: 'Markdown', reply_markup: buildPrivateHelpHomeKb() }).catch(() => {});
-  }
+  return _helpSend(ctx, helpCenter.buildHome(helpCenter.audience({ chatType: 'private', isAdmin: false })));
 }
 async function showPrivateHelpSection(ctx, key) {
-  const sec = PRIVATE_HELP_SECTIONS[key];
-  if (!sec) return;
-  await ctx.editMessageText(sec.text, { parse_mode: 'Markdown', reply_markup: buildPrivateBackKb() }).catch(() => {});
-  await ctx.answerCbQuery().catch(() => {});
+  const page = helpCenter.buildCategory(key, helpCenter.audience({ chatType: 'private', isAdmin: false }));
+  if (!page) return ctx.answerCbQuery().catch(() => {});
+  return _helpSend(ctx, page);
 }
 function handlePrivateHelpCallback(ctx, data) {
-  if (data === 'phelp_home') return showPrivateHelpHome(ctx);
-  const key = data.replace('phelp_', '');
-  if (PRIVATE_HELP_SECTIONS[key]) return showPrivateHelpSection(ctx, key);
+  const cb = helpCenter.parseCallback(data);
+  if (!cb || cb.chat !== 'private') return false;
+  if (cb.action === 'home') return showPrivateHelpHome(ctx);
+  if (helpCenter.isCategory(cb.key)) return showPrivateHelpSection(ctx, cb.key);
   return false;
+}
+
+// ✅ المرحلة 3: يدمج /adminhelp و /prohelp القديمين في المركز الموحّد
+async function showAdminHelp(ctx) {
+  const page = helpCenter.buildHome(helpCenter.audience({ chatType: ctx.chat?.type, isAdmin: true }));
+  await ctx.reply(page.text, { parse_mode: page.parse_mode, reply_markup: page.reply_markup }).catch(() => {});
+}
+async function showProHelp(ctx) {
+  const aud = await _helpAudience(ctx);
+  const page = helpCenter.buildCategory('protection', aud) || helpCenter.buildHome(aud);
+  await ctx.reply(page.text, { parse_mode: page.parse_mode, reply_markup: page.reply_markup }).catch(() => {});
 }
 
 // ══════════════════════════════════════════════════════════
@@ -630,5 +645,5 @@ module.exports = {
   handleAdmins, handleApprove, handleUnapprove, handleApprovedList,
   handleSetWarnLimit, getWarnLimit, handleTopActive, handleSlowmode,
   handleGban, handleUngban, handleWhois, handlePurgeTo, handleSetJoin,
-  showHelpHome, handleHelpCallback, HELP_SECTIONS, CMDS_TEXT,
+  showHelpHome, handleHelpCallback, showAdminHelp, showProHelp, HELP_SECTIONS, CMDS_TEXT,
 };

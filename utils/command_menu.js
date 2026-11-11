@@ -32,7 +32,7 @@ const toBotCommand = (c) => ({ command: c.name, description: c.desc });
 
 function buildMenus(commands = COMMANDS) {
   const pick = (scopes, roles) =>
-    commands.filter(c => scopes.includes(c.scope) && roles.includes(c.role)).map(toBotCommand);
+    commands.filter(c => c.menu !== false && scopes.includes(c.scope) && roles.includes(c.role)).map(toBotCommand); // menu:false = يظهر في مركز المساعدة فقط (المرحلة 3)
   const priv = pick(['private', 'both'], ['user']);
   return {
     default: priv,

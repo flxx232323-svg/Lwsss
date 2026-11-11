@@ -340,33 +340,8 @@ function setupGroupCommands(bot) {
     if (!isGroup(ctx)) return;
     if (!await isTgAdmin(ctx)) return;
     delCmd(ctx);
-    const text =
-      '🛡 *أوامر الإدارة*\n' +
-      '━━━━━━━━━━━━━━━\n\n' +
-      '🚫 *الحظر والطرد:*\n' +
-      '`/ban` — حظر عضو (رد أو @user)\n' +
-      '`/unban` — رفع الحظر\n' +
-      '`/kick` — طرد بدون حظر\n\n' +
-      '🔇 *الإسكات:*\n' +
-      '`/mute` — إسكات عضو (رد أو @user)\n' +
-      '`/mute all` — إسكات الكل\n' +
-      '`/unmute` — رفع الإسكات\n' +
-      '`/unmute all` — رفع إسكات الكل\n\n' +
-      '⚠️ *التحذيرات:*\n' +
-      '`/warn` — تحذير (3 تحذيرات = حظر)\n' +
-      '`/unwarn` — مسح التحذيرات\n' +
-      '`/warns` — عرض التحذيرات\n\n' +
-      '📌 *التثبيت:*\n' +
-      '`/pin` — تثبيت رسالة (رد)\n' +
-      '`/unpin` — إلغاء كل التثبيتات\n\n' +
-      '👥 *المنشن:*\n' +
-      '`/all [رسالة]` — منشن الكل\n\n' +
-      '⚙️ *الإعدادات:*\n' +
-      '`/settings` — لوحة الإعدادات\n' +
-      '`/stats` — إحصائيات\n' +
-      '`/rules` — القواعد';
-    const msg = await ctx.reply(text, { parse_mode: 'Markdown' }).catch(() => {});
-    if (msg) setTimeout(() => ctx.deleteMessage(msg.message_id).catch(() => {}), 30000);
+    // ✅ المرحلة 3: مركز المساعدة الموحّد بدل النص الثابت
+    return require('./group_pro_features').showAdminHelp(ctx);
   });
 
   // ══════════════════════════════════════════
