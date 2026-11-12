@@ -174,9 +174,8 @@ async function showMainMenu(ctx, name) {
 
   const rows = [
     [btn('📚 تصفح المحتوى', 'browse')],
-    [btn('🔍 بحث', 'search_prompt'), btn('🆕 جديد', 'latest'), btn('⭐ مفضلاتي', 'favorites')],
-    [btn('🗂 سجلي', 'history'),     btn('🤖 AI',    'ai_prompt'), btn(sp ? '🎓 تخصصي' : '🎓 اختر', 'change_sp')],
-    [btn('👤 ملفي', 'profile'),     btn('📊 إحصائيات', 'stats')],
+    [btn('🔍 بحث', 'search_prompt'), btn('⭐ مفضلاتي', 'favorites')],
+    [btn('🗂 سجلي', 'history'),     btn('👤 ملفي', 'profile')],
   ];
 
   if (lastFileBtn) rows.push([lastFileBtn]);
