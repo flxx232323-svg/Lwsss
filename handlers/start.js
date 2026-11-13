@@ -1,6 +1,6 @@
 'use strict';
 const escMd = t => (t || '').replace(/[*_`\[\]()~>#+=|{}.!\-]/g, '\\$&');
-const { build, btn } = require('../utils/keyboard');
+const { build, btn, btnRed } = require('../utils/keyboard');
 const { eos } = require('../utils/helpers');
 const interactions = require('../database/interactions');
 const usersDb = require('../database/users');
@@ -49,7 +49,7 @@ async function startHandler(ctx) {
       .replace(/\{time\}/g,    _time);
     const BOT_UN = process.env.BOT_USERNAME || '';
     const rows = [
-      [btn('📚 تصفح المحتوى', 'browse')],
+      [btnRed('📚 تصفح المحتوى', 'browse')],
       [btn('👥 قروباتي', 'gp_mylist')],
       [{ text: '➕ أضف البوت لمجموعتك', url: 'https://t.me/' + BOT_UN + '?startgroup=true' }]
     ];
@@ -173,7 +173,7 @@ async function showMainMenu(ctx, name) {
     '📚 *منصتك الأكاديمية* — اختر ما تريد:';
 
   const rows = [
-    [btn('📚 تصفح المحتوى', 'browse')],
+    [btnRed('📚 تصفح المحتوى', 'browse')],
     [btn('🔍 بحث', 'search_prompt'), btn('⭐ مفضلاتي', 'favorites')],
     [btn('🗂 سجلي', 'history'),     btn('👤 ملفي', 'profile')],
   ];
@@ -205,7 +205,7 @@ async function showWelcome(telegram, chatId, from, name) {
     const specLine = sp ? '🎓 *' + escMd(sp.name) + '*' : '';
     const welcome = timeGreet + ' *' + escMd(name) + '*\n━━━━━━━━━━━━━━━━━━━━\n' + (specLine ? specLine + '\n\n' : '\n') + '📚 *منصتك الأكاديمية* — اختر ما تريد:';
     const rows = [
-      [{ text: '📚 تصفح المحتوى', callback_data: 'browse' }],
+      [{ text: '📚 تصفح المحتوى', callback_data: 'browse', style: 'danger' }],
       [{ text: '🔍 بحث سريع', callback_data: 'search_prompt' }, { text: '🆕 أحدث الملفات', callback_data: 'latest' }],
       [{ text: '⭐ مفضلاتي', callback_data: 'favorites' }, { text: '🗂 آخر ما شاهدت', callback_data: 'history' }],
       [{ text: '👤 ملفي', callback_data: 'profile' }, { text: '📊 إحصائياتي', callback_data: 'stats' }],

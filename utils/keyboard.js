@@ -5,12 +5,15 @@ const { Markup } = require('telegraf');
 const btn = (text, data) => Markup.button.callback(text, data);
 
 // ── زر ملون ──────────────────────────────────────
-// color: 1=أحمر  2=برتقالي  3=بنفسجي  4=أخضر  5=رمادي
-const btnC = (text, data, color) => ({
-  text,
-  callback_data: data,
-  color: color || undefined,
-});
+// color: 1=أحمر  4=أخضر (النمطان المقابلان في تيليجرام؛ 2/3/5 بلا نمط فتبقى أزراراً عادية)
+// تيليجرام يلوّن الأزرار عبر الحقل style: danger=أحمر | success=أخضر | primary=أزرق (تطبيقات ما بعد 9 فبراير 2026؛
+// الأقدم تعرض الزر بلا لون). كان الحقل المستخدم سابقاً color وهو غير موجود في واجهة تيليجرام فيُتجاهَل.
+const STYLE_BY_COLOR = { 1: 'danger', 4: 'success' };
+const btnC = (text, data, color) => {
+  const b = { text, callback_data: data };
+  if (STYLE_BY_COLOR[color]) b.style = STYLE_BY_COLOR[color];
+  return b;
+};
 
 // ── اختصارات الألوان ──
 const btnRed    = (text, data) => btnC(text, data, 1); // 🔴
