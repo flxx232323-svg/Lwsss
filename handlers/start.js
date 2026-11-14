@@ -1,6 +1,6 @@
 'use strict';
 const escMd = t => (t || '').replace(/[*_`\[\]()~>#+=|{}.!\-]/g, '\\$&');
-const { build, btn, btnRed } = require('../utils/keyboard');
+const { build, btn, btnRed, btnSpec } = require('../utils/keyboard');
 const { eos } = require('../utils/helpers');
 const interactions = require('../database/interactions');
 const usersDb = require('../database/users');
@@ -119,7 +119,7 @@ async function startHandler(ctx) {
 async function askSpecialty(ctx, name) {
   const specs = await content.getSpecs();
   if (!specs.length) return showMainMenu(ctx, name);
-  const rows = specs.map(s => [btn('🎓 ' + s.name, 'set_sp_' + s.id)]);
+  const rows = specs.map(s => [btnSpec(s.name, 'set_sp_' + s.id)]);
   rows.push([btn('⏭ تخطي لاحقاً', 'skip_sp')]);
   return eos(ctx,
     '👋 *أهلاً ' + name + '!*\n\n' +

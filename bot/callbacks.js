@@ -149,8 +149,8 @@ module.exports.registerCallbacks = function(bot, deps) {
       // 2×2 grid
       const rows = [];
       for (let i = 0; i < sp.length; i += 2) {
-        const row = [kbBtn('🎓 ' + sp[i].name, 'set_sp_' + sp[i].id)];
-        if (sp[i+1]) row.push(kbBtn('🎓 ' + sp[i+1].name, 'set_sp_' + sp[i+1].id));
+        const row = [require('../utils/keyboard').btnSpec(sp[i].name, 'set_sp_' + sp[i].id)];
+        if (sp[i+1]) row.push(require('../utils/keyboard').btnSpec(sp[i+1].name, 'set_sp_' + sp[i+1].id));
         rows.push(row);
       }
       return eos(ctx, '🎓 *اختر تخصصك:*', { parse_mode: 'Markdown', ...kbBuild(rows) });

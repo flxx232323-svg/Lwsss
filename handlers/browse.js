@@ -23,7 +23,7 @@ var bundlesDb        = require('../database/bundles');
 var commentsDb       = require('../database/comments');
 var filesDb          = require('../database/files');
 var interactions     = require('../database/interactions');
-var { build, btn, back, backMenu } = require('../utils/keyboard');
+var { build, btn, back, backMenu, btnSpec } = require('../utils/keyboard');
 var { eos }          = require('../utils/helpers');
 var { all } = require('../database/db');
 var PS = 50;
@@ -50,8 +50,8 @@ async function showSpecs(ctx) {
   if (!specs) { specs = await content.getSpecs(); cacheSet('specs_all', specs, 21600000); }
   var rows = [];
   for (var _i = 0; _i < specs.length; _i += 2) {
-    var _r = [btn('🎓 '+specs[_i].name, 'sp_'+specs[_i].id)];
-    if (specs[_i+1]) _r.push(btn('🎓 '+specs[_i+1].name, 'sp_'+specs[_i+1].id));
+    var _r = [btnSpec(specs[_i].name, 'sp_'+specs[_i].id)];
+    if (specs[_i+1]) _r.push(btnSpec(specs[_i+1].name, 'sp_'+specs[_i+1].id));
     rows.push(_r);
   }
   rows.push(back('main_menu'));

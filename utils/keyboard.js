@@ -31,8 +31,15 @@ const build = rows => ({
   reply_markup: { inline_keyboard: rows }
 });
 
+// 🔵 أزرق (style=primary في تيليجرام) + إبراز تخصصات محددة بالاسم في قوائم اختيار التخصص
+const btnBlue = (text, data) => ({ text, callback_data: data, style: 'primary' });
+const HIGHLIGHT_SPECS = ['computer science'];
+const btnSpec = (name, data) => (HIGHLIGHT_SPECS.includes(String(name || '').trim().toLowerCase())
+  ? btnBlue('🎓 ' + name, data) : btn('🎓 ' + name, data));
+
 module.exports = {
   btn, btnC,
   btnRed, btnOrange, btnPurple, btnGreen, btnGray,
+  btnBlue, btnSpec,
   back, backMenu, build,
 };
